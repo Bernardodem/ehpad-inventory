@@ -23,4 +23,11 @@ router.get('/me', authMiddleware, (req, res) => {
   res.json(req.user);
 });
 
+router.get('/reset-admin', async (req, res) => {
+  const db = getDb();
+  const hash = bcrypt.hashSync('Admin2024!', 10);
+  db.prepare(`UPDATE users SET password_hash = ? WHERE username = 'admin'`).run(hash);
+  res.json({ success: true, message: 'Mot de passe admin réinitialisé' });
+});
+
 export default router;
