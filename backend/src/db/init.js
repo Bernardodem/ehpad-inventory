@@ -1,38 +1,27 @@
-import Database from 'better-sqlite3';
+import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { mkdirSync } from 'fs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = '/tmp/ehpad.db';
+const { Pool } = pg;
 
-let db;
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
 
 export function getDb() {
-  if (!db) {
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
-  }
-  return db;
+  return pool;
 }
 
-export function initDb() {
-  const database = new Database(DB_PATH);
-  database.pragma('journal_mode = WAL');
-  database.pragma('foreign_keys = ON');
-  db = database;
-
-  db.exec(`
+export async function initDb() {
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       full_name TEXT NOT NULL,
       role TEXT NOT NULL CHECK(role IN ('inventaire', 'gestionnaire', 'admin')),
-      created_at TEXT DEFAULT (datetime('now')),
+      created_at TIMESTAMP DEFAULT NOW(),
       active INTEGER DEFAULT 1
     );
 
@@ -61,18 +50,8 @@ export function initDb() {
       emplacement_etagere TEXT CHECK(emplacement_etagere IN ('A','B','C') OR emplacement_etagere IS NULL),
       emplacement_etage INTEGER,
       photo_url TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS inventaires (
-      id TEXT PRIMARY KEY,
-      produit_id TEXT NOT NULL REFERENCES produits(id),
-      quantite REAL NOT NULL,
-      date_peremption TEXT,
-      inventaire_session_id TEXT NOT NULL,
-      created_by TEXT REFERENCES users(id),
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
     );
 
     CREATE TABLE IF NOT EXISTS inventaire_sessions (
@@ -82,43 +61,51 @@ export function initDb() {
       categories TEXT,
       status TEXT DEFAULT 'en_cours' CHECK(status IN ('en_cours','termine')),
       created_by TEXT REFERENCES users(id),
-      created_at TEXT DEFAULT (datetime('now')),
-      finished_at TEXT
+      created_at TIMESTAMP DEFAULT NOW(),
+      finished_at TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS inventaires (
+      id TEXT PRIMARY KEY,
+      produit_id TEXT NOT NULL REFERENCES produits(id),
+      quantite REAL NOT NULL,
+      date_peremption TEXT,
+      inventaire_session_id TEXT NOT NULL,
+      created_by TEXT REFERENCES users(id),
+      created_at TIMESTAMP DEFAULT NOW()
     );
   `);
 
+  // Seed categories
   const cats = ['Alimentation','Diabétologie','Divers','EPI','Examen','Hygiène','Médicament','Ophtalmologie','Pansement','Protection','Soins','Urologie'];
-  const insertCat = db.prepare(`INSERT OR IGNORE INTO categories (id, name) VALUES (?, ?)`);
-  cats.forEach(c => insertCat.run(randomUUID(), c));
-
-  const fours = ['CS Médical','Alpha diab','Blédina France','Pharmacie du bon temps'];
-  const insertFour = db.prepare(`INSERT OR IGNORE INTO fournisseurs (id, name) VALUES (?, ?)`);
-  fours.forEach(f => insertFour.run(randomUUID(), f));
-
-  const existingAdmin = db.prepare(`SELECT id FROM users WHERE username = 'admin'`).get();
-  if (!existingAdmin) {
-    const hash = bcrypt.hashSync('Admin2024!', 10);
-    db.prepare(`INSERT INTO users (id, username, password_hash, full_name, role) VALUES (?, ?, ?, ?, ?)`).run(
-      randomUUID(), 'admin', hash, 'Administrateur', 'admin'
-    );
-    db.prepare(`INSERT INTO users (id, username, password_hash, full_name, role) VALUES (?, ?, ?, ?, ?)`).run(
-      randomUUID(), 'idec', hash, 'IDEC Arc en Ciel', 'gestionnaire'
-    );
-    const hashInv = bcrypt.hashSync('Inv2024!', 10);
-    db.prepare(`INSERT INTO users (id, username, password_hash, full_name, role) VALUES (?, ?, ?, ?, ?)`).run(
-      randomUUID(), 'inventaire1', hashInv, 'Agent Inventaire', 'inventaire'
-    );
+  for (const c of cats) {
+    await pool.query(`INSERT INTO categories (id, name) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING`, [randomUUID(), c]);
   }
 
-  const getCat = db.prepare(`SELECT id FROM categories WHERE name = ?`);
-  const getFour = db.prepare(`SELECT id FROM fournisseurs WHERE name = ?`);
-  const countProduits = db.prepare(`SELECT COUNT(*) as c FROM produits`).get();
+  // Seed fournisseurs
+  const fours = ['CS Médical','Alpha diab','Blédina France','Pharmacie du bon temps'];
+  for (const f of fours) {
+    await pool.query(`INSERT INTO fournisseurs (id, name) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING`, [randomUUID(), f]);
+  }
 
-  if (countProduits.c === 0) {
-    const insertProduit = db.prepare(`
-      INSERT INTO produits (id, denomination, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, consommation_mensuelle, dotation, seuil_commande)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+  // Seed admin
+  const existing = await pool.query(`SELECT id FROM users WHERE username = 'admin'`);
+  if (existing.rows.length === 0) {
+    const hash = bcrypt.hashSync('Admin2024!', 10);
+    const hashInv = bcrypt.hashSync('Inv2024!', 10);
+    await pool.query(`INSERT INTO users (id, username, password_hash, full_name, role) VALUES ($1,$2,$3,$4,$5)`,
+      [randomUUID(), 'admin', hash, 'Administrateur', 'admin']);
+    await pool.query(`INSERT INTO users (id, username, password_hash, full_name, role) VALUES ($1,$2,$3,$4,$5)`,
+      [randomUUID(), 'idec', hash, 'IDEC Arc en Ciel', 'gestionnaire']);
+    await pool.query(`INSERT INTO users (id, username, password_hash, full_name, role) VALUES ($1,$2,$3,$4,$5)`,
+      [randomUUID(), 'inventaire1', hashInv, 'Agent Inventaire', 'inventaire']);
+  }
+
+  // Seed produits
+  const countRes = await pool.query(`SELECT COUNT(*) as c FROM produits`);
+  if (parseInt(countRes.rows[0].c) === 0) {
+    const getCat = async name => (await pool.query(`SELECT id FROM categories WHERE name = $1`, [name])).rows[0]?.id;
+    const getFour = async name => (await pool.query(`SELECT id FROM fournisseurs WHERE name = $1`, [name])).rows[0]?.id;
 
     const produits = [
       ['Blédine', '400g', 'Alimentation', null, 'Blédina France', 'Unité', 15, 20, null],
@@ -163,19 +150,16 @@ export function initDb() {
       ['Slip filet', 'T3', 'Protection', '72100', 'CS Médical', 'Sachet de 5', 50, 100, '20'],
     ];
 
-    produits.forEach(([denom, taille, cat, ref, four, cond, conso, dotation, seuil]) => {
-      const catRow = getCat.get(cat);
-      const fourRow = getFour.get(four);
-      insertProduit.run(
-        randomUUID(), denom, taille,
-        catRow?.id || null,
-        ref,
-        fourRow?.id || null,
-        cond, conso, dotation, seuil
+    for (const [denom, taille, cat, ref, four, cond, conso, dotation, seuil] of produits) {
+      const catId = await getCat(cat);
+      const fourId = await getFour(four);
+      await pool.query(
+        `INSERT INTO produits (id, denomination, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, consommation_mensuelle, dotation, seuil_commande)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [randomUUID(), denom, taille||null, catId||null, ref||null, fourId||null, cond||null, conso||null, dotation||null, seuil||null]
       );
-    });
+    }
   }
 
-  console.log('Base de données initialisée');
-  return db;
+  console.log('Base de données PostgreSQL initialisée');
 }
