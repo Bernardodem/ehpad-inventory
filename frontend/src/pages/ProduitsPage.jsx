@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import api from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
-import { Search, X, Edit2, Save, Upload, MapPin, Package } from 'lucide-react';
+import { Search, X, Edit2, Save, Upload, MapPin, Package, Plus } from 'lucide-react';
 
 const ETAGERES = ['A', 'B', 'C'];
 const ETAGES = [1, 2, 3, 4, 5];
@@ -12,6 +12,9 @@ function FicheProduit({ produit, categories, fournisseurs, onClose, canEdit, onS
   const [form, setForm] = useState({ ...produit });
   const [photoFile, setPhotoFile] = useState(null);
   const [loading, setLoading] = useState(false);
+const [selected, setSelected] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
   const fileRef = useRef();
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -63,9 +66,20 @@ function FicheProduit({ produit, categories, fournisseurs, onClose, canEdit, onS
             {produit.taille && <p className="text-sm text-gray-500">Taille : {produit.taille}</p>}
           </div>
           <div className="flex gap-2">
-            {canEdit && !editing && (
-              <button className="btn-secondary" onClick={() => setEditing(true)}><Edit2 size={15} /> Modifier</button>
-            )}
+           {canEdit && !editing && (
+  <>
+    <button className="btn-secondary" onClick={() => setEditing(true)}><Edit2 size={15} /> Modifier</button>
+    <button className="btn-danger" onClick={async () => {
+      if (!window.confirm('Archiver ce produit ? Il n\'apparaîtra plus dans le catalogue.')) return;
+      try {
+        await api.delete(`/produits/${produit.id}`);
+        toast.success('Produit archivé');
+        onSaved();
+        onClose();
+      } catch { toast.error('Erreur'); }
+    }}>Archiver</button>
+  </>
+)}
             {editing && (
               <>
                 <button className="btn-secondary" onClick={() => { setEditing(false); setForm({ ...produit }); }}>Annuler</button>
@@ -233,6 +247,19 @@ export default function ProduitsPage() {
         </div>
       )}
 
+<button className="btn-primary fixed bottom-6 right-6 shadow-lg" onClick={() => setShowAdd(true)}>
+  <Plus size={16} /> Nouveau produit
+</button>
+
+{showAdd && (
+  <AddProduitModal
+    categories={categories}
+    fournisseurs={fournisseurs}
+    onClose={() => setShowAdd(false)}
+    onSaved={() => { load(); setShowAdd(false); }}
+  />
+)}
+
       {selected && (
         <FicheProduit
           produit={selected}
@@ -243,6 +270,58 @@ export default function ProduitsPage() {
           onSaved={() => { load(); setSelected(null); }}
         />
       )}
+    </div>
+  );
+}
+
+function AddProduitModal({ categories, fournisseurs, onClose, onSaved }) {
+  const [form, setForm] = useState({ denomination: '', taille: '', categorie_id: '', fournisseur_id: '', conditionnement: '', dotation: '', seuil_commande: '', prix: '' });
+  const [loading, setLoading] = useState(false);
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const save = async () => {
+    if (!form.denomination) return toast.error('Dénomination requise');
+    setLoading(true);
+    try {
+      await api.post('/produits', form);
+      toast.success('Produit ajouté');
+      onSaved();
+    } catch (err) { toast.error(err.response?.data?.error || 'Erreur'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="font-bold text-gray-900">Nouveau produit</h2>
+          <button className="btn-ghost p-1.5" onClick={onClose}><X size={18} /></button>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="sm:col-span-2"><label className="label">Dénomination *</label><input className="input" value={form.denomination} onChange={e => set('denomination', e.target.value)} /></div>
+          <div><label className="label">Taille</label><input className="input" value={form.taille} onChange={e => set('taille', e.target.value)} /></div>
+          <div><label className="label">Catégorie</label>
+            <select className="input" value={form.categorie_id} onChange={e => set('categorie_id', e.target.value)}>
+              <option value="">—</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div><label className="label">Fournisseur</label>
+            <select className="input" value={form.fournisseur_id} onChange={e => set('fournisseur_id', e.target.value)}>
+              <option value="">—</option>
+              {fournisseurs.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </div>
+          <div><label className="label">Conditionnement</label><input className="input" value={form.conditionnement} onChange={e => set('conditionnement', e.target.value)} /></div>
+          <div><label className="label">Dotation</label><input className="input" type="number" value={form.dotation} onChange={e => set('dotation', e.target.value)} /></div>
+          <div><label className="label">Seuil de commande</label><input className="input" value={form.seuil_commande} onChange={e => set('seuil_commande', e.target.value)} /></div>
+          <div><label className="label">Prix (€)</label><input className="input" type="number" value={form.prix} onChange={e => set('prix', e.target.value)} /></div>
+        </div>
+        <div className="flex gap-2 mt-5">
+          <button className="btn-primary" onClick={save} disabled={loading}><Save size={15} />{loading ? 'Enregistrement…' : 'Ajouter'}</button>
+          <button className="btn-secondary" onClick={onClose}>Annuler</button>
+        </div>
+      </div>
     </div>
   );
 }

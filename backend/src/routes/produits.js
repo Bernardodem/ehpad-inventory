@@ -30,15 +30,12 @@ router.get('/', async (req, res) => {
     const params = [];
 
     if (categorie && search) {
-      query += ` WHERE c.name = $1 AND p.denomination ILIKE $2`;
-      params.push(categorie, `%${search}%`);
-    } else if (categorie) {
-      query += ` WHERE c.name = $1`;
-      params.push(categorie);
-    } else if (search) {
-      query += ` WHERE p.denomination ILIKE $1`;
-      params.push(`%${search}%`);
+const conditions = [`(p.archived IS NULL OR p.archived = false)`];
+    if (categorie) conditions.push(`c.name = $${params.length + 1}`) && params.push(categorie);
+    if (search) conditions.push(`p.denomination ILIKE $${params.length + 1}`) && params.push(`%${search}%`);
+    query += ` WHERE ${conditions.join(' AND ')}`;
     }
+
     query += ` ORDER BY c.name, p.denomination`;
     const result = await pool.query(query, params);
     res.json(result.rows);
@@ -106,6 +103,15 @@ router.post('/', requireRole('gestionnaire', 'admin'), async (req, res) => {
       [id, denomination, taille||null, categorie_id||null, ref_fournisseur||null, fournisseur_id||null, conditionnement||null, consommation_mensuelle||null, dotation||null, seuil_commande||null, prix||null]
     );
     res.status(201).json({ id });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/:id', requireRole('gestionnaire', 'admin'), async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT id FROM produits WHERE id = $1`, [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Produit introuvable' });
+    await pool.query(`UPDATE produits SET archived = true, updated_at = NOW() WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

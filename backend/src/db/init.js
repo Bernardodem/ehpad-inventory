@@ -161,5 +161,7 @@ export async function initDb() {
     }
   }
 
+await pool.query(`ALTER TABLE produits ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT false`);
+
   console.log('Base de données PostgreSQL initialisée');
 }

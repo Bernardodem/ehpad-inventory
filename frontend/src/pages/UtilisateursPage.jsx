@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
 import toast from 'react-hot-toast';
-import { Plus, Shield, Edit2, UserX, X, Save } from 'lucide-react';
+import { Plus, Shield, Edit2, UserX, UserCheck, X, Save, Eye } from 'lucide-react';
 
 const ROLE_LABELS = { admin: 'Administrateur', gestionnaire: 'Gestionnaire de commande', inventaire: 'Inventaire' };
 const ROLE_COLORS = { admin: 'badge-red', gestionnaire: 'badge-blue', inventaire: 'badge-green' };
@@ -78,8 +78,9 @@ function UserModal({ user, onClose, onSaved }) {
 
 export default function UtilisateursPage() {
   const [users, setUsers] = useState([]);
-  const [modal, setModal] = useState(null); // null | 'new' | user object
+  const [modal, setModal] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showInactifs, setShowInactifs] = useState(false);
 
   const load = async () => {
     try {
@@ -99,57 +100,78 @@ export default function UtilisateursPage() {
     } catch (err) { toast.error(err.response?.data?.error || 'Erreur'); }
   };
 
+  const actifs = users.filter(u => u.active);
+  const inactifs = users.filter(u => !u.active);
+  const displayed = showInactifs ? inactifs : actifs;
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold text-gray-900">Gestion des utilisateurs</h1>
-        <button className="btn-primary" onClick={() => setModal('new')}><Plus size={16} /> Nouvel utilisateur</button>
+        <div className="flex gap-2">
+          <button
+            className={showInactifs ? 'btn-primary' : 'btn-secondary'}
+            onClick={() => setShowInactifs(p => !p)}
+          >
+            <Eye size={15} />
+            {showInactifs ? 'Voir actifs' : `Désactivés (${inactifs.length})`}
+          </button>
+          <button className="btn-primary" onClick={() => setModal('new')}><Plus size={16} /> Nouvel utilisateur</button>
+        </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center h-32 text-gray-400">Chargement…</div>
       ) : (
         <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600">Utilisateur</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600 hidden sm:table-cell">Identifiant</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600">Habilitation</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600 hidden md:table-cell">Statut</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {users.map(u => (
-                <tr key={u.id} className={`table-row ${!u.active ? 'opacity-50' : ''}`}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                        {u.full_name.charAt(0).toUpperCase()}
-                      </div>
-                      <span className="font-medium text-gray-900">{u.full_name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 font-mono hidden sm:table-cell">{u.username}</td>
-                  <td className="px-4 py-3">
-                    <span className={ROLE_COLORS[u.role]}><Shield size={11} className="inline mr-1" />{ROLE_LABELS[u.role]}</span>
-                  </td>
-                  <td className="px-4 py-3 hidden md:table-cell">
-                    <span className={u.active ? 'badge-green' : 'badge-gray'}>{u.active ? 'Actif' : 'Désactivé'}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1 justify-end">
-                      <button className="btn-ghost p-1.5 text-xs" title="Modifier" onClick={() => setModal(u)}><Edit2 size={15} /></button>
-                      <button className="btn-ghost p-1.5 text-xs text-red-500 hover:bg-red-50" title={u.active ? 'Désactiver' : 'Réactiver'} onClick={() => toggleActive(u)}>
-                        <UserX size={15} />
-                      </button>
-                    </div>
-                  </td>
+          {displayed.length === 0 ? (
+            <div className="p-10 text-center text-gray-400">
+              {showInactifs ? 'Aucun compte désactivé' : 'Aucun utilisateur actif'}
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Utilisateur</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600 hidden sm:table-cell">Identifiant</th>
+                  <th className="text-left px-4 py-3 font-semibold text-gray-600">Habilitation</th>
+                  <th className="px-4 py-3" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {displayed.map(u => (
+                  <tr key={u.id} className="table-row">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                          {u.full_name.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="font-medium text-gray-900">{u.full_name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 font-mono hidden sm:table-cell">{u.username}</td>
+                    <td className="px-4 py-3">
+                      <span className={ROLE_COLORS[u.role]}><Shield size={11} className="inline mr-1" />{ROLE_LABELS[u.role]}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1 justify-end">
+                        {!showInactifs && (
+                          <button className="btn-ghost p-1.5" title="Modifier" onClick={() => setModal(u)}><Edit2 size={15} /></button>
+                        )}
+                        <button
+                          className={`btn-ghost p-1.5 ${u.active ? 'text-red-500 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'}`}
+                          title={u.active ? 'Désactiver' : 'Réactiver'}
+                          onClick={() => toggleActive(u)}
+                        >
+                          {u.active ? <UserX size={15} /> : <UserCheck size={15} />}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 
