@@ -157,6 +157,7 @@ export default function ProduitsPage() {
   const [catFilter, setCatFilter] = useState('');
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
 
   const load = async () => {
     setLoading(true);
