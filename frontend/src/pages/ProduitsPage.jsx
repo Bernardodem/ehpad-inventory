@@ -11,8 +11,7 @@ function FicheProduit({ produit, categories, fournisseurs, onClose, canEdit, onS
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ ...produit });
   const [photoFile, setPhotoFile] = useState(null);
-  const [loading, setLoading] = useState(false);
-const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const fileRef = useRef();
