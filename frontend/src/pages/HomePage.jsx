@@ -36,15 +36,7 @@ export default function HomePage() {
       path: '/produits',
       roles: ['inventaire', 'gestionnaire', 'admin'],
     },
-    {
-      title: 'Utilisateurs',
-      desc: 'Créer des comptes et gérer les niveaux d\'habilitation',
-      icon: Users,
-      color: 'bg-red-50 border-red-200 hover:border-red-400',
-      iconColor: 'text-red-600',
-      path: '/utilisateurs',
-      roles: ['admin'],
-    },
+ 
   ].filter(c => can(...c.roles));
 
   return (

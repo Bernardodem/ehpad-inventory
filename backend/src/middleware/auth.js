@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 
+const SSO_SECRET = process.env.SSO_JWT_SECRET || 'SsoSecretMonArcEnCiel2024';
 const JWT_SECRET = process.env.JWT_SECRET || 'ehpad-arc-en-ciel-secret-2024';
 
 export function authMiddleware(req, res, next) {
@@ -9,7 +10,12 @@ export function authMiddleware(req, res, next) {
   }
   try {
     const token = header.slice(7);
-    req.user = jwt.verify(token, JWT_SECRET);
+    // Essaie d'abord le secret SSO, puis le secret local
+    try {
+      req.user = jwt.verify(token, SSO_SECRET);
+    } catch {
+      req.user = jwt.verify(token, JWT_SECRET);
+    }
     next();
   } catch {
     return res.status(401).json({ error: 'Token invalide ou expiré' });
@@ -18,8 +24,9 @@ export function authMiddleware(req, res, next) {
 
 export function requireRole(...roles) {
   return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ error: 'Accès interdit — niveau d\'habilitation insuffisant' });
+    const role = req.user.role || req.user.role_global;
+    if (!roles.includes(role)) {
+      return res.status(403).json({ error: 'Accès interdit' });
     }
     next();
   };
