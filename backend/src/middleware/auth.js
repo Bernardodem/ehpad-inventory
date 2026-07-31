@@ -24,7 +24,15 @@ export function authMiddleware(req, res, next) {
 
 export function requireRole(...roles) {
   return (req, res, next) => {
-    const role = req.user.role || req.user.role_global;
+    let role = req.user.role;
+    if (!role) {
+      if (['admin_groupe', 'admin_etablissement'].includes(req.user.role_global)) {
+        role = 'admin';
+      } else {
+        const app = (req.user.apps || []).find(a => a.id === process.env.STOCKS_APP_ID);
+        role = app?.role || 'gestionnaire';
+      }
+    }
     if (!roles.includes(role)) {
       return res.status(403).json({ error: 'Accès interdit' });
     }

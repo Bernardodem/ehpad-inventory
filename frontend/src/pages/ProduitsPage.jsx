@@ -7,12 +7,32 @@ import { Search, X, Edit2, Save, Upload, MapPin, Package, Plus } from 'lucide-re
 const ETAGERES = ['A', 'B', 'C'];
 const ETAGES = [1, 2, 3, 4, 5];
 
+function Field({ label, field, type = 'text', options, editing, form, set }) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      {editing ? (
+        options ? (
+          <select className="input" value={form[field] || ''} onChange={e => set(field, e.target.value)}>
+            <option value="">—</option>
+            {options.map(o => <option key={o.id || o} value={o.id || o}>{o.name || o}</option>)}
+          </select>
+        ) : (
+          <input className="input" type={type} value={form[field] || ''} onChange={e => set(field, e.target.value)} />
+        )
+      ) : (
+        <p className="text-sm text-gray-900 py-2 border-b border-gray-100">{form[field] || <span className="text-gray-400 italic">Non renseigné</span>}</p>
+      )}
+    </div>
+  );
+}
+
 function FicheProduit({ produit, categories, fournisseurs, onClose, canEdit, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ ...produit });
   const [photoFile, setPhotoFile] = useState(null);
   const [selected, setSelected] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const fileRef = useRef();
 
@@ -37,23 +57,6 @@ function FicheProduit({ produit, categories, fournisseurs, onClose, canEdit, onS
     }
   };
 
-  const Field = ({ label, field, type = 'text', options }) => (
-    <div>
-      <label className="label">{label}</label>
-      {editing ? (
-        options ? (
-          <select className="input" value={form[field] || ''} onChange={e => set(field, e.target.value)}>
-            <option value="">—</option>
-            {options.map(o => <option key={o.id || o} value={o.id || o}>{o.name || o}</option>)}
-          </select>
-        ) : (
-          <input className="input" type={type} value={form[field] || ''} onChange={e => set(field, e.target.value)} />
-        )
-      ) : (
-        <p className="text-sm text-gray-900 py-2 border-b border-gray-100">{form[field] || <span className="text-gray-400 italic">Non renseigné</span>}</p>
-      )}
-    </div>
-  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -109,16 +112,16 @@ function FicheProduit({ produit, categories, fournisseurs, onClose, canEdit, onS
             )}
           </div>
 
-          <Field label="Dénomination" field="denomination" />
-          <Field label="Taille / Référence" field="taille" />
-          <Field label="Catégorie" field="categorie_id" options={categories} />
-          <Field label="Fournisseur" field="fournisseur_id" options={fournisseurs} />
-          <Field label="Réf. fournisseur" field="ref_fournisseur" />
-          <Field label="Conditionnement" field="conditionnement" />
-          <Field label="Prix (€)" field="prix" type="number" />
-          <Field label="Dotation" field="dotation" type="number" />
-          <Field label="Seuil de commande" field="seuil_commande" />
-          <Field label="Consommation mensuelle" field="consommation_mensuelle" type="number" />
+          <Field label="Dénomination" field="denomination" editing={editing} form={form} set={set} />
+          <Field label="Taille / Référence" field="taille" editing={editing} form={form} set={set} />
+          <Field label="Catégorie" field="categorie_id" options={categories} editing={editing} form={form} set={set} />
+          <Field label="Fournisseur" field="fournisseur_id" options={fournisseurs} editing={editing} form={form} set={set} />
+          <Field label="Réf. fournisseur" field="ref_fournisseur" editing={editing} form={form} set={set} />
+          <Field label="Conditionnement" field="conditionnement" editing={editing} form={form} set={set} />
+          <Field label="Prix (€)" field="prix" type="number" editing={editing} form={form} set={set} />
+          <Field label="Dotation" field="dotation" type="number" editing={editing} form={form} set={set} />
+          <Field label="Seuil de commande" field="seuil_commande" editing={editing} form={form} set={set} />
+          <Field label="Consommation mensuelle" field="consommation_mensuelle" type="number" editing={editing} form={form} set={set} />
 
           {/* Emplacement */}
           <div className="sm:col-span-2">

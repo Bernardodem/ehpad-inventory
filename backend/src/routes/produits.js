@@ -28,15 +28,14 @@ router.get('/', async (req, res) => {
     const { categorie, search } = req.query;
     let query = PRODUIT_SELECT;
     const params = [];
+    const conditions = ["(p.archived IS NULL OR p.archived = false)"];
 
-    if (categorie && search) {
-const conditions = [`(p.archived IS NULL OR p.archived = false)`];
-    if (categorie) conditions.push(`c.name = $${params.length + 1}`) && params.push(categorie);
-    if (search) conditions.push(`p.denomination ILIKE $${params.length + 1}`) && params.push(`%${search}%`);
+    if (categorie) { conditions.push(`c.name = $${params.length + 1}`); params.push(categorie); }
+    if (search) { conditions.push(`p.denomination ILIKE $${params.length + 1}`); params.push(`%${search}%`); }
+
     query += ` WHERE ${conditions.join(' AND ')}`;
-    }
-
     query += ` ORDER BY c.name, p.denomination`;
+
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
