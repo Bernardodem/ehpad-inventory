@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Package, ClipboardList, ShoppingCart, Users, Home } from 'lucide-react';
+import { Package, ClipboardList, ShoppingCart, Users, Home, Menu, X } from 'lucide-react';
+import { useState } from 'react';
 import UserMenu from './UserMenu';
 import toast from 'react-hot-toast';
 
@@ -9,6 +10,7 @@ const ROLE_COLORS = { admin: 'badge-red', gestionnaire: 'badge-blue', inventaire
 
 export default function Layout() {
   const { user, logout, can } = useAuth();
+  const [burgerOpen, setBurgerOpen] = useState(false);
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -42,15 +44,12 @@ export default function Layout() {
         </div>
       </div>
 
-      {/* Nav */}
-      <nav className="bg-white border-b border-gray-200 shadow-sm">
+      {/* Nav desktop */}
+      <nav className="bg-white border-b border-gray-200 shadow-sm hidden sm:block">
         <div className="max-w-5xl mx-auto px-4">
-          <div className="flex gap-1 overflow-x-auto">
+          <div className="flex gap-1">
             {navItems.map(({ to, label, icon: Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={to === '/'}
+              <NavLink key={to} to={to} end={to === '/'}
                 className={({ isActive }) =>
                   `flex items-center gap-2 px-3 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
                     isActive ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -64,6 +63,33 @@ export default function Layout() {
           </div>
         </div>
       </nav>
+
+      {/* Nav mobile burger */}
+      <div className="sm:hidden bg-white border-b border-gray-200 shadow-sm">
+        <div className="px-4 py-2 flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-700">Navigation</span>
+          <button onClick={() => setBurgerOpen(o => !o)} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100">
+            {burgerOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
+        {burgerOpen && (
+          <div className="border-t border-gray-100">
+            {navItems.map(({ to, label, icon: Icon }) => (
+              <NavLink key={to} to={to} end={to === '/'}
+                onClick={() => setBurgerOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-4 py-3 text-sm font-medium border-l-4 transition-colors ${
+                    isActive ? 'border-primary-600 text-primary-700 bg-primary-50' : 'border-transparent text-gray-600 hover:bg-gray-50'
+                  }`
+                }
+              >
+                <Icon size={17} />
+                {label}
+              </NavLink>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Content */}
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-6">
