@@ -25,6 +25,16 @@ export function AuthProvider({ children }) {
       return;
     }
 
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (payload.exp * 1000 < Date.now()) {
+        localStorage.removeItem('sso_token');
+        localStorage.removeItem('token');
+        window.location.href = '/';
+        return;
+      }
+    } catch {}
+
     api.get('/auth/me')
 .then(({ data }) => {
   const normalized = {
