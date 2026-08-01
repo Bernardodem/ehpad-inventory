@@ -250,9 +250,11 @@ export default function ProduitsPage() {
         </div>
       )}
 
-<button className="btn-primary fixed bottom-6 right-6 shadow-lg" onClick={() => setShowAdd(true)}>
-  <Plus size={16} /> Nouveau produit
-</button>
+{can('gestionnaire', 'admin') && (
+  <button className="btn-primary fixed bottom-6 right-6 shadow-lg" onClick={() => setShowAdd(true)}>
+    <Plus size={16} /> Nouveau produit
+  </button>
+)}
 
 {showAdd && (
   <AddProduitModal
