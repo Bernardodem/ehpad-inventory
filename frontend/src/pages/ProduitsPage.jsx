@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import api from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
-import { Search, X, Edit2, Save, Upload, MapPin, Package, Plus } from 'lucide-react';
+import { Search, X, Edit2, Save, Upload, MapPin, Package, Plus, Trash2 } from 'lucide-react';
 
 const ETAGERES = ['A', 'B', 'C'];
 const ETAGES = [1, 2, 3, 4, 5];
@@ -27,7 +27,92 @@ function Field({ label, field, type = 'text', options, editing, form, set }) {
   );
 }
 
-function FicheProduit({ produit, categories, fournisseurs, onClose, canEdit, onSaved }) {
+function EmplacementsConfigModal({ onClose, onSaved }) {
+  const [data, setData] = useState({ etageres: [], niveaux: [], emplacements: [] });
+  const [newValues, setNewValues] = useState({ etageres: '', niveaux: '', emplacements: '' });
+
+  const load = async () => {
+    const [et, niv, emp] = await Promise.all([
+      api.get('/emplacements-config/etageres'),
+      api.get('/emplacements-config/niveaux'),
+      api.get('/emplacements-config/emplacements'),
+    ]);
+    setData({ etageres: et.data, niveaux: niv.data, emplacements: emp.data });
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const add = async (type) => {
+    const value = newValues[type].trim();
+    if (!value) return;
+    try {
+      await api.post(`/emplacements-config/${type}`, { name: value });
+      setNewValues(p => ({ ...p, [type]: '' }));
+      await load();
+      onSaved();
+      toast.success('Ajouté');
+    } catch (err) { toast.error(err.response?.data?.error || 'Erreur'); }
+  };
+
+  const remove = async (type, id) => {
+    if (!window.confirm('Supprimer cet élément ?')) return;
+    try {
+      await api.delete(`/emplacements-config/${type}/${id}`);
+      await load();
+      onSaved();
+      toast.success('Supprimé');
+    } catch { toast.error('Erreur'); }
+  };
+
+  const columns = [
+    { key: 'etageres', label: 'Étagères' },
+    { key: 'niveaux', label: 'Niveaux' },
+    { key: 'emplacements', label: 'Emplacements' },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-3xl shadow-2xl max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="font-bold text-gray-900">Gérer les emplacements</h2>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
+        </div>
+        <div className="grid sm:grid-cols-3 gap-5">
+          {columns.map(col => (
+            <div key={col.key}>
+              <label className="label mb-2">{col.label}</label>
+              <div className="flex gap-2 mb-3">
+                <input
+                  className="input"
+                  placeholder="Nouveau..."
+                  value={newValues[col.key]}
+                  onChange={e => setNewValues(p => ({ ...p, [col.key]: e.target.value }))}
+                  onKeyDown={e => e.key === 'Enter' && add(col.key)}
+                />
+                <button onClick={() => add(col.key)} className="btn-primary px-3"><Plus size={15} /></button>
+              </div>
+              <div className="space-y-1">
+                {data[col.key].map(item => (
+                  <div key={item.id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg text-sm">
+                    <span>{item.name}</span>
+                    <button onClick={() => remove(col.key, item.id)} className="text-red-500 hover:bg-red-50 rounded p-1">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+                {data[col.key].length === 0 && (
+                  <p className="text-xs text-gray-400 italic px-3 py-2">Aucun élément</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, emplacementsList, onClose, canEdit, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ ...produit });
   const [photoFile, setPhotoFile] = useState(null);
@@ -36,6 +121,7 @@ function FicheProduit({ produit, categories, fournisseurs, onClose, canEdit, onS
   useEffect(() => { setForm({ ...produit }); }, [produit]);
   const [loading, setLoading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [showEmplacementsConfig, setShowEmplacementsConfig] = useState(false);
   const fileRef = useRef();
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
@@ -165,17 +251,21 @@ function FicheProduit({ produit, categories, fournisseurs, onClose, canEdit, onS
               <div className="flex gap-3">
                 <select className="input" value={form.emplacement_etagere || ''} onChange={e => set('emplacement_etagere', e.target.value)}>
                   <option value="">Étagère —</option>
-                  {ETAGERES.map(e => <option key={e} value={e}>Étagère {e}</option>)}
+                  {etageres.map(e => <option key={e.id} value={e.name}>Étagère {e.name}</option>)}
                 </select>
                 <select className="input" value={form.emplacement_etage || ''} onChange={e => set('emplacement_etage', e.target.value)}>
                   <option value="">Niveau —</option>
-                  {ETAGES.map(n => <option key={n} value={n}>Niveau {n}</option>)}
+                  {niveaux.map(n => <option key={n.id} value={n.name}>Niveau {n.name}</option>)}
+                </select>
+                <select className="input" value={form.emplacement || ''} onChange={e => set('emplacement', e.target.value)}>
+                  <option value="">Emplacement —</option>
+                  {emplacementsList.map(em => <option key={em.id} value={em.name}>{em.name}</option>)}
                 </select>
               </div>
             ) : (
               <p className="text-sm text-gray-900 py-2 border-b border-gray-100">
                 {form.emplacement_etagere && form.emplacement_etage
-                  ? `Étagère ${form.emplacement_etagere} — Niveau ${form.emplacement_etage}`
+                  ? `Étagère ${form.emplacement_etagere} — Niveau ${form.emplacement_etage}${form.emplacement ? ` — ${form.emplacement}` : ''}`
                   : <span className="text-gray-400 italic">Non renseigné</span>}
               </p>
             )}
@@ -196,6 +286,10 @@ export default function ProduitsPage() {
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [showEmplacementsConfig, setShowEmplacementsConfig] = useState(false);
+  const [etageres, setEtageres] = useState([]);
+  const [niveaux, setNiveaux] = useState([]);
+  const [emplacementsList, setEmplacementsList] = useState([]);
 
   const load = async () => {
     setLoading(true);
@@ -203,14 +297,20 @@ export default function ProduitsPage() {
       const params = {};
       if (search) params.search = search;
       if (catFilter) params.categorie = catFilter;
-      const [p, c, f] = await Promise.all([
+      const [p, c, f, et, niv, emp] = await Promise.all([
         api.get('/produits', { params }),
         api.get('/produits/categories'),
         api.get('/produits/fournisseurs'),
+        api.get('/emplacements-config/etageres'),
+        api.get('/emplacements-config/niveaux'),
+        api.get('/emplacements-config/emplacements'),
       ]);
       setProduits(p.data);
       setCategories(c.data);
       setFournisseurs(f.data);
+      setEtageres(et.data);
+      setNiveaux(niv.data);
+      setEmplacementsList(emp.data);
     } catch { toast.error('Erreur de chargement'); }
     finally { setLoading(false); }
   };
@@ -285,10 +385,20 @@ export default function ProduitsPage() {
         </div>
       )}
 
+{can('admin') && (
+  <button className="btn-secondary fixed bottom-20 right-6 shadow-lg whitespace-nowrap w-44 justify-center" onClick={() => setShowEmplacementsConfig(true)}>
+    <MapPin size={16} /> Emplacements
+  </button>
+)}
+
 {can('gestionnaire', 'admin') && (
-  <button className="btn-primary fixed bottom-6 right-6 shadow-lg" onClick={() => setShowAdd(true)}>
+  <button className="btn-primary fixed bottom-6 right-6 shadow-lg w-44 justify-center" onClick={() => setShowAdd(true)}>
     <Plus size={16} /> Nouveau produit
   </button>
+)}
+
+{showEmplacementsConfig && (
+  <EmplacementsConfigModal onClose={() => setShowEmplacementsConfig(false)} onSaved={load} />
 )}
 
 {showAdd && (
@@ -305,6 +415,9 @@ export default function ProduitsPage() {
           produit={selected}
           categories={categories}
           fournisseurs={fournisseurs}
+          etageres={etageres}
+          niveaux={niveaux}
+          emplacementsList={emplacementsList}
           canEdit={can('gestionnaire', 'admin')}
           onClose={() => setSelected(null)}
           onSaved={() => { load(); setSelected(null); }}

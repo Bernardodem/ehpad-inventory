@@ -66,7 +66,7 @@ router.get('/:id', async (req, res) => {
 
 router.patch('/:id', requireRole('gestionnaire', 'admin'), upload.single('photo'), async (req, res) => {
   try {
-    const fields = ['denomination','taille','ref_fournisseur','conditionnement','consommation_mensuelle','dotation','seuil_commande','prix','emplacement_etagere','emplacement_etage','categorie_id','fournisseur_id','sans_peremption','peremption_sans_jour'];
+    const fields = ['denomination','taille','ref_fournisseur','conditionnement','consommation_mensuelle','dotation','seuil_commande','prix','emplacement_etagere','emplacement_etage','emplacement','categorie_id','fournisseur_id','sans_peremption','peremption_sans_jour'];
     const updates = [];
     const vals = [];
     let i = 1;

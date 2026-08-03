@@ -6,6 +6,7 @@ import { initDb } from './db/init.js';
 import authRoutes from './routes/auth.js';
 import usersRoutes from './routes/users.js';
 import produitsRoutes from './routes/produits.js';
+import emplacementsRoutes from './routes/emplacements.js';
 import inventaireRoutes from './routes/inventaire.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -19,6 +20,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/produits', produitsRoutes);
+app.use('/api/emplacements-config', emplacementsRoutes);
 app.use('/api/inventaire', inventaireRoutes);
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok', service: 'EHPAD Arc en Ciel - Inventaire' }));
