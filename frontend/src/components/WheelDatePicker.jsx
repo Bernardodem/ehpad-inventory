@@ -25,7 +25,7 @@ function Wheel({ values, selected, onSelect, formatLabel }) {
   };
 
   return (
-    <div className="relative" style={{ height: ITEM_HEIGHT * 3 }}>
+    <div className="relative flex-1" style={{ height: ITEM_HEIGHT * 3 }}>
       <div className="absolute left-0 right-0 pointer-events-none border-y-2 border-primary-400" style={{ top: ITEM_HEIGHT, height: ITEM_HEIGHT }} />
       <div
         ref={ref}
@@ -58,15 +58,15 @@ export default function WheelDatePicker({ value, onChange, defaultSansJour }) {
 
   const jours = Array.from({ length: 31 }, (_, i) => i + 1);
   const moisIdx = Array.from({ length: 12 }, (_, i) => i);
-  const annees = Array.from({ length: 8 }, (_, i) => new Date().getFullYear() + i - 1);
+  const annees = Array.from({ length: 8 }, (_, i) => new Date().getFullYear() + i);
 
   useEffect(() => {
     if (jourInconnu) {
       const iso = `${annee}-${String(mois + 1).padStart(2, "0")}`;
       onChange(iso);
     } else {
-      const d = new Date(annee, mois, jour);
-      onChange(d.toISOString().split("T")[0]);
+      const iso = `${annee}-${String(mois + 1).padStart(2, "0")}-${String(jour).padStart(2, "0")}`;
+      onChange(iso);
     }
   }, [jour, mois, annee, jourInconnu]);
 
@@ -76,7 +76,7 @@ export default function WheelDatePicker({ value, onChange, defaultSansJour }) {
         <input type="checkbox" checked={jourInconnu} onChange={e => setJourInconnu(e.target.checked)} className="w-3.5 h-3.5 accent-primary-600" />
         Jour inconnu (mois/année seulement)
       </label>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 w-full">
         {!jourInconnu && <Wheel values={jours} selected={jour} onSelect={setJour} />}
         <Wheel values={moisIdx} selected={mois} onSelect={setMois} formatLabel={i => MOIS[i]} />
         <Wheel values={annees} selected={annee} onSelect={setAnnee} />

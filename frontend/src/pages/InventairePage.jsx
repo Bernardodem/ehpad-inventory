@@ -118,6 +118,7 @@ export default function InventairePage() {
       const kb = triPar === 'categorie' ? (b.categorie || 'Sans catégorie') : emplacementLabel(b);
       return ka.localeCompare(kb) || a.denomination.localeCompare(b.denomination);
     });
+    const premierNonCompte = produitsTries.findIndex(p => !lignes[p.id]);
     return (
       <InventaireCarteUnique
         produits={produitsTries}
@@ -127,6 +128,7 @@ export default function InventairePage() {
         onClose={() => setVueCarte(false)}
         triPar={triPar}
         setTriPar={setTriPar}
+        indexInitial={premierNonCompte >= 0 ? premierNonCompte : 0}
       />
     );
   }
@@ -369,9 +371,9 @@ function EditConditionnementModal({ produit, onClose, onSaved }) {
   );
 }
 
-function InventaireCarteUnique({ produits, lignes, disabled, onSave, onClose, triPar, setTriPar }) {
+function InventaireCarteUnique({ produits, lignes, disabled, onSave, onClose, triPar, setTriPar, indexInitial }) {
   const progressCarte = produits.length > 0 ? Math.round((Object.keys(lignes).length / produits.length) * 100) : 0;
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(indexInitial || 0);
   const produit = produits[index];
   const initial = lignes[produit?.id];
 
@@ -403,6 +405,15 @@ function InventaireCarteUnique({ produits, lignes, disabled, onSave, onClose, tr
 
   const valider = () => {
     if (qte === '') { toast.error('Saisissez une quantité'); return; }
+    if (date && qte !== '0' && !produit.sans_peremption) {
+      const dateComparaison = /^\d{4}-\d{2}$/.test(date) ? date + '-28' : date;
+      const today = new Date().toISOString().split('T')[0];
+      if (dateComparaison < today) {
+        toast.error('La date de péremption ne peut pas être dans le passé');
+        setDate('');
+        return;
+      }
+    }
     onSave(produit.id, qte, date);
     suivant();
   };
@@ -466,25 +477,30 @@ function InventaireCarteUnique({ produits, lignes, disabled, onSave, onClose, tr
         <div className="space-y-4 max-w-sm mx-auto w-full">
           <div>
             <label className="label">Qté en stock</label>
-            <input
-              className="input text-center text-2xl py-4"
-              type="number" min="0" step="0.5"
-              value={qte}
-              disabled={disabled}
-              onChange={e => setQte(e.target.value)}
-              autoFocus
-            />
+            <div className="flex items-center gap-2">
+              <button type="button" disabled={disabled} onClick={() => { setQte('0'); setDate(''); }}
+                className="btn-secondary px-4 py-4 text-lg font-bold shrink-0">0</button>
+              <input
+                className="input text-center text-2xl py-4"
+                type="number" min="0" step="1"
+                value={qte}
+                disabled={disabled}
+                onChange={e => { setQte(e.target.value); if (e.target.value === '0') setDate(''); }}
+                autoFocus
+              />
+            </div>
           </div>
-          {!produit.sans_peremption && (
+          {!produit.sans_peremption && qte !== '0' && (
             <div>
               <label className="label">Date péremption</label>
-              {!disabled && (
+              {!disabled && !/^\d{4}-\d{2}$/.test(date) && (
                 <input
                   type="date"
-                  autoFocus
-                  className="input text-center mb-2"
+                  min={new Date().toISOString().split('T')[0]}
+                  className="input text-center mb-2 hidden sm:block"
                   value={date}
                   onChange={e => setDate(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') valider(); }}
                 />
               )}
               {!disabled && <WheelDatePicker value={date} onChange={d => { setDate(d); majFormatPeremption(produit, d); }} defaultSansJour={produit.peremption_sans_jour} />}
@@ -513,9 +529,52 @@ function InventaireInput({ produit, initial, disabled, onSave }) {
   const [date, setDate] = useState(initial?.date_peremption ?? '');
   const [dirty, setDirty] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  const [ouvrirVersHaut, setOuvrirVersHaut] = useState(false);
+  const dateInputRef = useRef(null);
+  const dateButtonRef = useRef(null);
+
+  const ouvrirPicker = () => {
+    if (dateButtonRef.current) {
+      const rect = dateButtonRef.current.getBoundingClientRect();
+      const espaceRestant = window.innerHeight - rect.bottom;
+      setOuvrirVersHaut(espaceRestant < 350);
+    }
+    setShowPicker(true);
+  };
+
+  const popoverRef = useRef(null);
+
+  useEffect(() => {
+    if (showPicker && dateInputRef.current) {
+      dateInputRef.current.focus();
+    }
+  }, [showPicker]);
+
+  useEffect(() => {
+    if (!showPicker) return;
+    const handleClickOutside = (e) => {
+      if (
+        popoverRef.current && !popoverRef.current.contains(e.target) &&
+        dateButtonRef.current && !dateButtonRef.current.contains(e.target)
+      ) {
+        setShowPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showPicker]);
 
   const handleSave = () => {
     if (qte === '') return toast.error('Saisissez une quantité');
+    if (date && qte !== '0' && !produit.sans_peremption) {
+      const dateComparaison = /^\d{4}-\d{2}$/.test(date) ? date + '-28' : date;
+      const today = new Date().toISOString().split('T')[0];
+      if (dateComparaison < today) {
+        toast.error('La date de péremption ne peut pas être dans le passé');
+        setDate('');
+        return;
+      }
+    }
     onSave(qte, date);
     setDirty(false);
   };
@@ -524,20 +583,25 @@ function InventaireInput({ produit, initial, disabled, onSave }) {
     <>
       <div>
         <label className="label">Qté en stock</label>
-        <input
-          className={`input text-center ${initial && !dirty ? 'border-green-300 bg-green-50' : ''}`}
-          type="number" min="0" step="0.5"
-          value={qte}
-          disabled={disabled}
-          onChange={e => { setQte(e.target.value); setDirty(true); }}
-          onBlur={() => { if (dirty && qte !== '') handleSave(); }}
-          placeholder="0"
-        />
+        <div className="flex items-center gap-2">
+          <button type="button" disabled={disabled} onClick={() => { setQte('0'); setDate(''); setDirty(true); onSave('0', ''); }}
+            className="btn-secondary px-3 font-bold shrink-0">0</button>
+          <input
+            className={`input text-center ${initial && !dirty ? 'border-green-300 bg-green-50' : ''}`}
+            type="number" min="0" step="1"
+            value={qte}
+            disabled={disabled}
+            onChange={e => { setQte(e.target.value); setDirty(true); if (e.target.value === '0') setDate(''); }}
+            onBlur={() => { if (dirty && qte !== '') handleSave(); }}
+            placeholder="0"
+          />
+        </div>
       </div>
-      {!produit.sans_peremption && (
+      {!produit.sans_peremption && qte !== '0' && (
         <div className="relative">
           <label className="label">Date péremption</label>
-          <button type="button" disabled={disabled} onClick={() => setShowPicker(p => !p)}
+          <button ref={dateButtonRef} type="button" disabled={disabled} onClick={ouvrirPicker}
+            onFocus={ouvrirPicker}
             className="input text-xs text-left">
             {date ? (/^\d{4}-\d{2}$/.test(date) ? new Date(date + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }) : new Date(date).toLocaleDateString('fr-FR')) : 'Choisir une date'}
           </button>
@@ -545,14 +609,18 @@ function InventaireInput({ produit, initial, disabled, onSave }) {
             <p className="text-xs text-gray-400 mt-1">Dernière saisie : {new Date(produit.derniere_peremption).toLocaleDateString('fr-FR')}</p>
           )}
           {showPicker && (
-            <div className="absolute z-20 top-full left-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-200 p-2">
-              <input
-                type="date"
-                autoFocus
-                className="input text-xs mb-2"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-              />
+            <div ref={popoverRef} className={`fixed sm:absolute inset-x-4 sm:inset-x-auto top-1/2 sm:top-auto left-1/2 sm:left-0 -translate-x-1/2 sm:translate-x-0 -translate-y-1/2 sm:translate-y-0 z-30 bg-white rounded-xl shadow-2xl sm:shadow-lg border border-gray-200 p-3 sm:p-2 max-w-xs sm:max-w-none mx-auto sm:mx-0 ${ouvrirVersHaut ? "sm:bottom-full sm:mb-1" : "sm:top-full sm:mt-1"}`}>
+              {!/^\d{4}-\d{2}$/.test(date) && (
+                <input
+                  ref={dateInputRef}
+                  type="date"
+                  min={new Date().toISOString().split('T')[0]}
+                  className="input text-xs mb-2 hidden sm:block"
+                  value={date}
+                  onChange={e => setDate(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { setDirty(true); setShowPicker(false); handleSave(); } }}
+                />
+              )}
               <WheelDatePicker value={date} onChange={d => { setDate(d); majFormatPeremption(produit, d); }} defaultSansJour={produit.peremption_sans_jour} />
               <button
                 className="btn-primary w-full mt-2 text-xs py-1.5 flex justify-center"
