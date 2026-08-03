@@ -32,6 +32,8 @@ function FicheProduit({ produit, categories, fournisseurs, onClose, canEdit, onS
   const [form, setForm] = useState({ ...produit });
   const [photoFile, setPhotoFile] = useState(null);
   const [selected, setSelected] = useState(null);
+
+  useEffect(() => { setForm({ ...produit }); }, [produit]);
   const [loading, setLoading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const fileRef = useRef();
@@ -120,6 +122,39 @@ function FicheProduit({ produit, categories, fournisseurs, onClose, canEdit, onS
           <Field label="Conditionnement" field="conditionnement" editing={editing} form={form} set={set} />
           <Field label="Prix (€)" field="prix" type="number" editing={editing} form={form} set={set} />
           <Field label="Dotation" field="dotation" type="number" editing={editing} form={form} set={set} />
+          <div>
+            <label className="label">Péremption</label>
+            {editing ? (
+              <label className="flex items-center gap-2 py-2 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" checked={!!form.sans_peremption} onChange={e => set('sans_peremption', e.target.checked)} className="w-4 h-4 accent-primary-600" />
+                Ce produit n'a pas de date de péremption
+              </label>
+            ) : (
+              <div className="py-2">
+                <span className="text-sm text-gray-900">{form.sans_peremption ? "Ce produit n'a pas de date de péremption" : 'Ce produit a une date de péremption'}</span>
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="label">Format de péremption</label>
+            {editing ? (
+              <label className={`flex items-center gap-2 py-2 text-sm ${form.sans_peremption ? 'text-gray-300 cursor-not-allowed' : 'text-gray-700 cursor-pointer'}`}>
+                <input type="checkbox" disabled={!!form.sans_peremption} checked={!!form.peremption_sans_jour} onChange={e => set('peremption_sans_jour', e.target.checked)} className="w-4 h-4 accent-primary-600" />
+                Dates de péremption au format mois/année
+              </label>
+            ) : (
+              <div className="py-2">
+                {form.sans_peremption ? (
+                  <span className="text-sm text-gray-400">—</span>
+                ) : form.peremption_sans_jour ? (
+                  <span className="text-sm text-gray-900">Dates de péremption au format mois/année</span>
+                ) : (
+                  <span className="text-sm text-gray-400 italic">Format classique (jour précis)</span>
+                )}
+              </div>
+            )}
+          </div>
+
           <Field label="Seuil de commande" field="seuil_commande" editing={editing} form={form} set={set} />
           <Field label="Consommation mensuelle" field="consommation_mensuelle" type="number" editing={editing} form={form} set={set} />
 
@@ -250,9 +285,11 @@ export default function ProduitsPage() {
         </div>
       )}
 
-<button className="btn-primary fixed bottom-6 right-6 shadow-lg" onClick={() => setShowAdd(true)}>
-  <Plus size={16} /> Nouveau produit
-</button>
+{can('gestionnaire', 'admin') && (
+  <button className="btn-primary fixed bottom-6 right-6 shadow-lg" onClick={() => setShowAdd(true)}>
+    <Plus size={16} /> Nouveau produit
+  </button>
+)}
 
 {showAdd && (
   <AddProduitModal
@@ -278,7 +315,7 @@ export default function ProduitsPage() {
 }
 
 function AddProduitModal({ categories, fournisseurs, onClose, onSaved }) {
-  const [form, setForm] = useState({ denomination: '', taille: '', categorie_id: '', fournisseur_id: '', conditionnement: '', dotation: '', seuil_commande: '', prix: '' });
+  const [form, setForm] = useState({ denomination: '', taille: '', categorie_id: '', fournisseur_id: '', conditionnement: '', dotation: '', seuil_commande: '', prix: '', sans_peremption: false });
   const [loading, setLoading] = useState(false);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -317,6 +354,18 @@ function AddProduitModal({ categories, fournisseurs, onClose, onSaved }) {
           </div>
           <div><label className="label">Conditionnement</label><input className="input" value={form.conditionnement} onChange={e => set('conditionnement', e.target.value)} /></div>
           <div><label className="label">Dotation</label><input className="input" type="number" value={form.dotation} onChange={e => set('dotation', e.target.value)} /></div>
+          <div className="col-span-2">
+            <label className="flex items-center gap-2 py-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" checked={!!form.sans_peremption} onChange={e => set('sans_peremption', e.target.checked)} className="w-4 h-4 accent-primary-600" />
+              Ce produit n'a pas de date de péremption
+            </label>
+          </div>
+          <div className="col-span-2">
+            <label className={`flex items-center gap-2 py-2 text-sm ${form.sans_peremption ? 'text-gray-300 cursor-not-allowed' : 'text-gray-700 cursor-pointer'}`}>
+              <input type="checkbox" disabled={!!form.sans_peremption} checked={!!form.peremption_sans_jour} onChange={e => set('peremption_sans_jour', e.target.checked)} className="w-4 h-4 accent-primary-600" />
+              Dates de péremption au format mois/année
+            </label>
+          </div>
           <div><label className="label">Seuil de commande</label><input className="input" value={form.seuil_commande} onChange={e => set('seuil_commande', e.target.value)} /></div>
           <div><label className="label">Prix (€)</label><input className="input" type="number" value={form.prix} onChange={e => set('prix', e.target.value)} /></div>
         </div>

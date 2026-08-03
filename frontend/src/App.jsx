@@ -17,6 +17,7 @@ export default function App() {
             <Route index element={<HomePage />} />
             <Route path="produits" element={<ProduitsPage />} />
             <Route path="inventaire" element={<InventairePage />} />
+            <Route path="inventaire/:sessionId" element={<InventairePage />} />
             <Route path="commande" element={<CommandePage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

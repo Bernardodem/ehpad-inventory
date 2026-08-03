@@ -6,6 +6,8 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [viewAs, setViewAsState] = useState(() => localStorage.getItem('test_view_as') || 'admin');
+  const setViewAs = (v) => { localStorage.setItem('test_view_as', v); setViewAsState(v); };
 
   useEffect(() => {
     // Récupère le token SSO depuis l'URL
@@ -58,8 +60,10 @@ export function AuthProvider({ children }) {
     window.location.href = '/';
   };
 
+  const isRealAdmin = user && (user.role === 'admin' || ['admin_etablissement','admin_groupe'].includes(user.role_global));
   const can = (...roles) => {
     if (!user) return false;
+    if (isRealAdmin) return roles.includes(viewAs);
     const role = user.role || user.role_global;
     return roles.includes(role);
   };
@@ -67,7 +71,7 @@ export function AuthProvider({ children }) {
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400">Chargement...</div>;
 
   return (
-    <AuthContext.Provider value={{ user, logout, can }}>
+    <AuthContext.Provider value={{ user, logout, can, isRealAdmin, viewAs, setViewAs }}>
       {children}
     </AuthContext.Provider>
   );

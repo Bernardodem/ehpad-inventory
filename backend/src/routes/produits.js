@@ -17,7 +17,8 @@ const storage = multer.diskStorage({
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
 const PRODUIT_SELECT = `
-  SELECT p.*, c.name as categorie, f.name as fournisseur
+  SELECT p.*, c.name as categorie, f.name as fournisseur,
+    (SELECT i.date_peremption FROM inventaires i WHERE i.produit_id = p.id AND i.date_peremption IS NOT NULL AND i.date_peremption != '' ORDER BY i.created_at DESC LIMIT 1) as derniere_peremption
   FROM produits p
   LEFT JOIN categories c ON p.categorie_id = c.id
   LEFT JOIN fournisseurs f ON p.fournisseur_id = f.id
@@ -65,7 +66,7 @@ router.get('/:id', async (req, res) => {
 
 router.patch('/:id', requireRole('gestionnaire', 'admin'), upload.single('photo'), async (req, res) => {
   try {
-    const fields = ['denomination','taille','ref_fournisseur','conditionnement','consommation_mensuelle','dotation','seuil_commande','prix','emplacement_etagere','emplacement_etage','categorie_id','fournisseur_id'];
+    const fields = ['denomination','taille','ref_fournisseur','conditionnement','consommation_mensuelle','dotation','seuil_commande','prix','emplacement_etagere','emplacement_etage','categorie_id','fournisseur_id','sans_peremption','peremption_sans_jour'];
     const updates = [];
     const vals = [];
     let i = 1;
@@ -93,13 +94,13 @@ router.patch('/:id', requireRole('gestionnaire', 'admin'), upload.single('photo'
 
 router.post('/', requireRole('gestionnaire', 'admin'), async (req, res) => {
   try {
-    const { denomination, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, consommation_mensuelle, dotation, seuil_commande, prix } = req.body;
+    const { denomination, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, consommation_mensuelle, dotation, seuil_commande, prix, sans_peremption, peremption_sans_jour } = req.body;
     if (!denomination) return res.status(400).json({ error: 'Dénomination requise' });
     const id = randomUUID();
     await pool.query(
-      `INSERT INTO produits (id, denomination, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, consommation_mensuelle, dotation, seuil_commande, prix)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [id, denomination, taille||null, categorie_id||null, ref_fournisseur||null, fournisseur_id||null, conditionnement||null, consommation_mensuelle||null, dotation||null, seuil_commande||null, prix||null]
+      `INSERT INTO produits (id, denomination, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, consommation_mensuelle, dotation, seuil_commande, prix, sans_peremption, peremption_sans_jour)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      [id, denomination, taille||null, categorie_id||null, ref_fournisseur||null, fournisseur_id||null, conditionnement||null, consommation_mensuelle||null, dotation||null, seuil_commande||null, prix||null, sans_peremption === 'true' || sans_peremption === true, peremption_sans_jour === 'true' || peremption_sans_jour === true]
     );
     res.status(201).json({ id });
   } catch (err) { res.status(500).json({ error: err.message }); }
