@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Package, ClipboardList, ShoppingCart, Users, Home, Menu, X } from 'lucide-react';
 import { useState } from 'react';
 import UserMenu from './UserMenu';
+import Footer from './Footer';
 import toast from 'react-hot-toast';
 
 const ROLE_LABELS = { admin: 'Administrateur', gestionnaire: 'Gestionnaire de commande', inventaire: 'Inventaire' };
@@ -97,9 +98,7 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      <footer className="bg-white border-t border-gray-100 py-3 text-center text-xs text-gray-400">
-        EHPAD Arc en Ciel — MAPAD Group — Gestion des stocks v1.0
-      </footer>
+      <Footer appSource="Gestion des stocks" />
     </div>
   );
 }
