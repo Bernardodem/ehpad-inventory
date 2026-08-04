@@ -46,22 +46,28 @@ export default function Layout() {
       {/* Header */}
       <div className="max-w-5xl mx-auto px-4 pt-4 w-full">
         <div className="rounded-2xl px-5 py-4 mb-4 text-white" style={{ background: 'linear-gradient(135deg, #3A2020, #5C3A37)' }}>
-          <div className="grid grid-cols-3 items-center">
+          <div className="flex sm:grid sm:grid-cols-3 items-center justify-between">
             <div className="flex items-center gap-3 min-w-0">
-              <img src="https://monaec.fr/logo-aec.jpg" alt="Arc en Ciel" className="h-12 rounded-lg shrink-0" />
+              <img src="https://monaec.fr/logo-aec.jpg" alt="Arc en Ciel" className="h-10 sm:h-12 rounded-lg shrink-0" />
               <div className="min-w-0">
-                <h1 className="text-base font-bold truncate">Bonjour, {user?.prenom || user?.full_name} 👋</h1>
-                <p className="text-xs leading-tight" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                <h1 className="text-base font-bold truncate">Bonjour, {user?.prenom || user?.full_name}</h1>
+                <p className="text-xs leading-tight hidden sm:block" style={{ color: 'rgba(255,255,255,0.55)' }}>
                   {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
                   <br />Nous fêtons les {getSaintDuJour()}
                 </p>
               </div>
             </div>
-            <div className="text-center font-bold text-base">Gestion des stocks</div>
-            <div className="flex justify-end">
+            <div className="text-center font-bold text-base hidden sm:block">Gestion des stocks</div>
+            <div className="flex justify-end items-center gap-2">
+              <a href="/" className="hidden sm:block p-2 rounded-lg text-white hover:bg-white/10" title="Retour au portail">
+                <Home size={18} />
+              </a>
               <UserMenu user={user} onLogout={handleLogout} isRealAdmin={isRealAdmin} viewAs={viewAs} setViewAs={setViewAs} />
             </div>
           </div>
+          <p className="text-xs mt-2 sm:hidden truncate" style={{ color: 'rgba(255,255,255,0.55)' }}>
+            {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })} — Nous fêtons les {getSaintDuJour()}
+          </p>
         </div>
       </div>
 
