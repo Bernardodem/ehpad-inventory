@@ -90,6 +90,7 @@ router.get('/commande', requireRole('gestionnaire', 'admin'), async (req, res) =
         p.taille,
         p.conditionnement,
         p.ref_fournisseur,
+        p.fournisseur_id,
         f.name as fournisseur,
         p.dotation,
         p.seuil_commande,

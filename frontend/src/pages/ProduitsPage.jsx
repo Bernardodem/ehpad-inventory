@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
-import { Search, X, Edit2, Save, Upload, MapPin, Package, Plus, Trash2 } from 'lucide-react';
+import { Search, X, Edit2, Save, Upload, MapPin, Package, Plus, Trash2, ArrowLeft } from 'lucide-react';
 
 const ETAGERES = ['A', 'B', 'C'];
 const ETAGES = [1, 2, 3, 4, 5];
@@ -327,6 +328,9 @@ export default function ProduitsPage() {
 
   return (
     <div>
+      <Link to="/" className="sm:hidden flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-3">
+        <ArrowLeft size={16} /> Accueil
+      </Link>
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <h1 className="text-xl font-bold text-gray-900 mr-auto">Catalogue produits</h1>
         <div className="relative">

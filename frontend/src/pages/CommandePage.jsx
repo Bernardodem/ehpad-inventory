@@ -1,16 +1,31 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import api from '../api';
 import toast from 'react-hot-toast';
-import { ShoppingCart, Printer, AlertTriangle } from 'lucide-react';
+import { ShoppingCart, Printer, AlertTriangle, ChevronLeft } from 'lucide-react';
 
 export default function CommandePage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filterCat, setFilterCat] = useState('');
+  const [filterFourn, setFilterFourn] = useState('');
+  const [validating, setValidating] = useState(null);
+  const [quantitesModifiees, setQuantitesModifiees] = useState({});
+
+  const [commandesExistantes, setCommandesExistantes] = useState([]);
+
+  const loadCommandes = (sessionId) => {
+    api.get('/commandes').then(r => {
+      setCommandesExistantes(r.data.filter(c => c.inventaire_session_id === sessionId));
+    });
+  };
 
   useEffect(() => {
     api.get('/inventaire/commande')
-      .then(r => setData(r.data))
+      .then(r => {
+        setData(r.data);
+        if (r.data.session_id) loadCommandes(r.data.session_id);
+      })
       .catch(() => toast.error('Erreur de chargement'))
       .finally(() => setLoading(false));
   }, []);
@@ -30,15 +45,17 @@ export default function CommandePage() {
   const lignes = data.lignes.filter(l => {
     const hasCommande = l.qte_a_commander > 0;
     const catMatch = !filterCat || l.categorie === filterCat;
-    return hasCommande && catMatch;
+    const fournMatch = !filterFourn || l.fournisseur === filterFourn;
+    return hasCommande && catMatch && fournMatch;
   });
 
   const categories = [...new Set(data.lignes.filter(l => l.qte_a_commander > 0).map(l => l.categorie))].sort();
+  const fournisseursDisponibles = [...new Set(data.lignes.filter(l => l.qte_a_commander > 0).map(l => l.fournisseur))].filter(Boolean).sort();
 
   const grouped = lignes.reduce((acc, l) => {
-    const cat = l.categorie || 'Sans catégorie';
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(l);
+    const fourn = l.fournisseur || 'Sans fournisseur';
+    if (!acc[fourn]) acc[fourn] = [];
+    acc[fourn].push(l);
     return acc;
   }, {});
 
@@ -47,8 +64,34 @@ export default function CommandePage() {
 
   const handlePrint = () => window.print();
 
+  const validerCommande = async (fournisseurNom, items) => {
+    const fournisseur_id = items[0]?.fournisseur_id;
+    if (!fournisseur_id) { toast.error('Fournisseur introuvable pour ce groupe'); return; }
+    setValidating(fournisseurNom);
+    try {
+      await api.post('/commandes', {
+        fournisseur_id,
+        inventaire_session_id: data.session_id,
+        lignes: items.map(l => ({ produit_id: l.produit_id, quantite: getQuantite(l) })),
+      });
+      toast.success(`Commande validée pour ${fournisseurNom}`);
+      loadCommandes(data.session_id);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erreur lors de la validation');
+    } finally {
+      setValidating(null);
+    }
+  };
+
+  const commandeExistePour = (fournisseurId) => commandesExistantes.find(c => c.fournisseur_id === fournisseurId);
+
+  const getQuantite = (l) => quantitesModifiees[l.produit_id] ?? l.qte_a_commander;
+
   return (
     <div>
+      <Link to="/" className="sm:hidden flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-3">
+        <ChevronLeft size={16} /> Accueil
+      </Link>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Commande à passer</h1>
@@ -72,11 +115,15 @@ export default function CommandePage() {
         </div>
       )}
 
-      {/* Filtre */}
-      <div className="mb-4">
+      {/* Filtres */}
+      <div className="mb-4 flex gap-2 flex-wrap">
         <select className="input w-auto" value={filterCat} onChange={e => setFilterCat(e.target.value)}>
           <option value="">Toutes catégories</option>
           {categories.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select className="input w-auto" value={filterFourn} onChange={e => setFilterFourn(e.target.value)}>
+          <option value="">Tous fournisseurs</option>
+          {fournisseursDisponibles.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
       </div>
 
@@ -87,10 +134,24 @@ export default function CommandePage() {
         </div>
       ) : (
         <div className="space-y-5">
-          {Object.entries(grouped).map(([cat, items]) => (
-            <div key={cat} className="card overflow-hidden">
-              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-                <h2 className="font-bold text-sm text-gray-700 uppercase tracking-wide">{cat}</h2>
+          {Object.entries(grouped).map(([fourn, items]) => {
+            const fournisseurId = items[0]?.fournisseur_id;
+            const commande = commandeExistePour(fournisseurId);
+            return (
+            <div key={fourn} className="card overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                <h2 className="font-bold text-sm text-gray-700 uppercase tracking-wide">{fourn}</h2>
+                {commande ? (
+                  <span className="badge-green text-xs px-3 py-1.5">✓ Commande validée</span>
+                ) : (
+                  <button
+                    className="btn-primary text-xs py-1.5 px-3"
+                    disabled={validating === fourn}
+                    onClick={() => validerCommande(fourn, items)}
+                  >
+                    {validating === fourn ? 'Validation...' : 'Valider la commande'}
+                  </button>
+                )}
               </div>
               <table className="w-full text-sm">
                 <thead className="border-b border-gray-100">
@@ -121,14 +182,21 @@ export default function CommandePage() {
                       </td>
                       <td className="px-4 py-3 text-center text-gray-500">{l.dotation}</td>
                       <td className="px-4 py-3 text-center bg-blue-50">
-                        <span className="text-lg font-bold text-blue-700">{l.qte_a_commander}</span>
+                        <input
+                          type="number" min="0" step="1"
+                          className="w-20 text-center text-lg font-bold text-blue-700 bg-blue-50 rounded-lg border border-blue-200 py-1"
+                          value={getQuantite(l)}
+                          disabled={!!commande}
+                          onChange={e => setQuantitesModifiees(p => ({ ...p, [l.produit_id]: e.target.value === '' ? '' : Number(e.target.value) }))}
+                        />
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

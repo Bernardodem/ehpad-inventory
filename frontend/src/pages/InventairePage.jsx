@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import WheelDatePicker from '../components/WheelDatePicker';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../api';
 import toast from 'react-hot-toast';
-import { Plus, CheckCircle, ClipboardList, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, X, LayoutGrid, List, Edit2 } from 'lucide-react';
+import { Plus, CheckCircle, ClipboardList, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, X, LayoutGrid, List, Edit2, Home } from 'lucide-react';
 
 export default function InventairePage() {
   const { sessionId } = useParams();
@@ -135,6 +135,9 @@ export default function InventairePage() {
 
   return (
     <div>
+      <Link to="/" className="sm:hidden flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-3">
+        <Home size={16} /> Accueil
+      </Link>
       <div className="flex items-center justify-between mb-6">
         {sessionId ? (
           <button className="btn-secondary" onClick={() => navigate('/inventaire')}>
