@@ -13,20 +13,25 @@ export default function InventairePage() {
   const [produits, setProduits] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
   const [lignes, setLignes] = useState({});
-  const [newSession, setNewSession] = useState({ label: '', type: 'total', categories: [] });
+  const [newSession, setNewSession] = useState({ label: '', type: 'total', categories: [], lieu_id: '' });
+  const [lieux, setLieux] = useState([]);
   const [showNew, setShowNew] = useState(false);
   const [loading, setLoading] = useState(false);
   const [openCats, setOpenCats] = useState({});
 
   const load = async () => {
-    const [s, c, p] = await Promise.all([
+    const [s, c] = await Promise.all([
       api.get('/inventaire/sessions'),
       api.get('/produits/categories'),
-      api.get('/produits'),
     ]);
     setSessions(s.data);
     setCategories(c.data);
-    setProduits(p.data);
+  };
+
+  const loadProduits = async (lieuId) => {
+    const url = lieuId ? `/produits?lieu_id=${lieuId}` : '/produits';
+    const { data } = await api.get(url);
+    setProduits(data);
   };
 
   const loadLignes = async (sessionId) => {
@@ -36,8 +41,18 @@ export default function InventairePage() {
     setLignes(map);
   };
 
-  useEffect(() => { load(); }, []);
-  useEffect(() => { if (activeSession) loadLignes(activeSession.id); }, [activeSession]);
+  useEffect(() => {
+    load();
+    api.get('/lieux').then(r => setLieux(r.data)).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (activeSession) {
+      loadLignes(activeSession.id);
+      loadProduits(activeSession.lieu_id || null);
+    } else {
+      loadProduits(null);
+    }
+  }, [activeSession]);
 
   useEffect(() => {
     if (sessions.length === 0) return;
@@ -61,7 +76,7 @@ export default function InventairePage() {
       const ses = (await api.get('/inventaire/sessions')).data.find(s => s.id === data.id);
       setActiveSession(ses);
       setShowNew(false);
-      setNewSession({ label: '', type: 'total', categories: [] });
+      setNewSession({ label: '', type: 'total', categories: [], lieu_id: '' });
       toast.success('Session créée');
     } catch (err) { toast.error(err.response?.data?.error || 'Erreur'); }
     finally { setLoading(false); }
@@ -167,6 +182,15 @@ export default function InventairePage() {
                 <option value="partiel">Inventaire partiel (par catégorie)</option>
               </select>
             </div>
+            {lieux.length > 0 && (
+              <div>
+                <label className="label">Lieu de stockage</label>
+                <select className="input" value={newSession.lieu_id} onChange={e => setNewSession(p => ({ ...p, lieu_id: e.target.value }))}>
+                  <option value="">Tous les lieux</option>
+                  {lieux.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </div>
+            )}
             {newSession.type === 'partiel' && (
               <div className="sm:col-span-2">
                 <label className="label">Catégories à inventorier</label>

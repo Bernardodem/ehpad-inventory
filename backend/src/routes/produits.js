@@ -26,13 +26,17 @@ const PRODUIT_SELECT = `
 
 router.get('/', async (req, res) => {
   try {
-    const { categorie, search } = req.query;
+    const { categorie, search, lieu_id } = req.query;
     let query = PRODUIT_SELECT;
     const params = [];
     const conditions = ["(p.archived IS NULL OR p.archived = false)"];
 
     if (categorie) { conditions.push(`c.name = $${params.length + 1}`); params.push(categorie); }
     if (search) { conditions.push(`p.denomination ILIKE $${params.length + 1}`); params.push(`%${search}%`); }
+    if (lieu_id) {
+      query = query.replace('FROM produits p', 'FROM produits p JOIN produit_lieu pl ON pl.produit_id = p.id AND pl.lieu_id = $' + (params.length + 1));
+      params.push(lieu_id);
+    }
 
     query += ` WHERE ${conditions.join(' AND ')}`;
     query += ` ORDER BY c.name, p.denomination`;

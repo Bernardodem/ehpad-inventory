@@ -23,6 +23,8 @@ app.use('/api/produits', produitsRoutes);
 app.use('/api/emplacements-config', emplacementsRoutes);
 import commandesRoutes from './routes/commandes.js';
 app.use('/api/commandes', commandesRoutes);
+import lieuxRoutes from './routes/lieux.js';
+app.use('/api/lieux', lieuxRoutes);
 app.use('/api/inventaire', inventaireRoutes);
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok', service: 'EHPAD Arc en Ciel - Inventaire' }));

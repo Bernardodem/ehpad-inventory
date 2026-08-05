@@ -24,8 +24,8 @@ router.post('/sessions', requireRole('inventaire', 'gestionnaire', 'admin'), asy
   try {
     const id = randomUUID();
     await pool.query(
-      `INSERT INTO inventaire_sessions (id, label, type, categories, created_by) VALUES ($1,$2,$3,$4,$5)`,
-      [id, label, type, categories ? JSON.stringify(categories) : null, req.user.id]
+      `INSERT INTO inventaire_sessions (id, label, type, categories, created_by, lieu_id) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [id, label, type, categories ? JSON.stringify(categories) : null, req.user.id, req.body.lieu_id || null]
     );
     res.status(201).json({ id });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -85,33 +85,69 @@ router.get('/commande', requireRole('gestionnaire', 'admin'), async (req, res) =
       if (lastSession.rows.length === 0) return res.json({ session: null, lignes: [] });
       sessionId = lastSession.rows[0].id;
     }
-    const result = await pool.query(`
-      SELECT
-        p.id as produit_id,
-        p.denomination,
-        p.taille,
-        p.conditionnement,
-        p.ref_fournisseur,
-        p.fournisseur_id,
-        f.name as fournisseur,
-        p.dotation,
-        p.seuil_commande,
-        p.prix,
-        i.quantite as stock_actuel,
-        i.date_peremption,
-        CASE
-          WHEN p.dotation IS NOT NULL AND i.quantite IS NOT NULL
-          THEN GREATEST(0, CAST(p.dotation AS REAL) - CAST(i.quantite AS REAL))
-          ELSE NULL
-        END as qte_a_commander,
-        c.name as categorie
-      FROM produits p
-      LEFT JOIN inventaires i ON i.produit_id = p.id AND i.inventaire_session_id = $1
-      LEFT JOIN categories c ON p.categorie_id = c.id
-      LEFT JOIN fournisseurs f ON p.fournisseur_id = f.id
-      WHERE p.dotation IS NOT NULL
-      ORDER BY c.name, p.denomination
-    `, [sessionId]);
+    // Recupere le lieu_id de la session si elle en a un
+    const sessionInfo = await pool.query('SELECT lieu_id FROM inventaire_sessions WHERE id = $1', [sessionId]);
+    const lieuId = sessionInfo.rows[0]?.lieu_id || null;
+
+    let result;
+    if (lieuId) {
+      result = await pool.query(`
+        SELECT
+          p.id as produit_id,
+          p.denomination,
+          p.taille,
+          p.conditionnement,
+          p.ref_fournisseur,
+          p.fournisseur_id,
+          f.name as fournisseur,
+          COALESCE(pl.dotation, p.dotation) as dotation,
+          COALESCE(pl.seuil_commande, p.seuil_commande) as seuil_commande,
+          p.prix,
+          i.quantite as stock_actuel,
+          i.date_peremption,
+          CASE
+            WHEN COALESCE(pl.dotation, p.dotation) IS NOT NULL AND i.quantite IS NOT NULL
+            THEN GREATEST(0, CAST(COALESCE(pl.dotation, p.dotation) AS REAL) - CAST(i.quantite AS REAL))
+            ELSE NULL
+          END as qte_a_commander,
+          c.name as categorie
+        FROM produits p
+        JOIN produit_lieu pl ON pl.produit_id = p.id AND pl.lieu_id = $2
+        LEFT JOIN inventaires i ON i.produit_id = p.id AND i.inventaire_session_id = $1
+        LEFT JOIN categories c ON p.categorie_id = c.id
+        LEFT JOIN fournisseurs f ON p.fournisseur_id = f.id
+        WHERE p.archived = false
+        ORDER BY c.name, p.denomination
+      `, [sessionId, lieuId]);
+    } else {
+      result = await pool.query(`
+        SELECT
+          p.id as produit_id,
+          p.denomination,
+          p.taille,
+          p.conditionnement,
+          p.ref_fournisseur,
+          p.fournisseur_id,
+          f.name as fournisseur,
+          p.dotation,
+          p.seuil_commande,
+          p.prix,
+          i.quantite as stock_actuel,
+          i.date_peremption,
+          CASE
+            WHEN p.dotation IS NOT NULL AND i.quantite IS NOT NULL
+            THEN GREATEST(0, CAST(p.dotation AS REAL) - CAST(i.quantite AS REAL))
+            ELSE NULL
+          END as qte_a_commander,
+          c.name as categorie
+        FROM produits p
+        LEFT JOIN inventaires i ON i.produit_id = p.id AND i.inventaire_session_id = $1
+        LEFT JOIN categories c ON p.categorie_id = c.id
+        LEFT JOIN fournisseurs f ON p.fournisseur_id = f.id
+        WHERE p.archived = false AND p.dotation IS NOT NULL
+        ORDER BY c.name, p.denomination
+      `, [sessionId]);
+    }
 
     res.json({ session_id: sessionId, lignes: result.rows });
   } catch (err) { res.status(500).json({ error: err.message }); }

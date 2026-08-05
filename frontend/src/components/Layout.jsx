@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Package, ClipboardList, ShoppingCart, Users, Home, Menu, X, Truck } from 'lucide-react';
+import { Package, ClipboardList, ShoppingCart, Users, Home, Menu, X, Truck, MapPin } from 'lucide-react';
 import { useState } from 'react';
 import UserMenu from './UserMenu';
 import Footer from './Footer';
@@ -40,6 +40,7 @@ export default function Layout() {
     { to: '/inventaire', label: 'Inventaire', icon: ClipboardList, roles: ['inventaire', 'gestionnaire', 'admin'] },
     { to: '/commande', label: 'Commande', icon: ShoppingCart, roles: ['gestionnaire', 'admin'] },
     { to: '/reception', label: 'Réception', icon: Truck, roles: ['gestionnaire', 'admin'] },
+    { to: '/lieux', label: 'Lieux', icon: MapPin, roles: ['admin'] },
   ].filter(item => item.always || (item.roles && can(...item.roles)));
 
   return (

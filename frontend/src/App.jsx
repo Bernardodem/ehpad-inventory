@@ -7,6 +7,7 @@ import ProduitsPage from './pages/ProduitsPage';
 import InventairePage from './pages/InventairePage';
 import CommandePage from './pages/CommandePage';
 import ReceptionPage from './pages/ReceptionPage';
+import LieuxPage from './pages/LieuxPage';
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
             <Route path="inventaire/:sessionId" element={<InventairePage />} />
             <Route path="commande" element={<CommandePage />} />
             <Route path="reception" element={<ReceptionPage />} />
+            <Route path="lieux" element={<LieuxPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

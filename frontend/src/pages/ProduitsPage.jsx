@@ -113,7 +113,7 @@ function EmplacementsConfigModal({ onClose, onSaved }) {
   );
 }
 
-function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, emplacementsList, onClose, canEdit, onSaved }) {
+function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, emplacementsList, lieux, onClose, canEdit, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ ...produit });
   const [photoFile, setPhotoFile] = useState(null);
@@ -124,6 +124,49 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
   const [showAdd, setShowAdd] = useState(false);
   const [showEmplacementsConfig, setShowEmplacementsConfig] = useState(false);
   const fileRef = useRef();
+  const [lieuxProduit, setLieuxProduit] = useState({}); // { lieuId: { produit_lieu_id, emplacement_etagere, emplacement_etage, emplacement } }
+
+  useEffect(() => {
+    if (!lieux || !lieux.length) return;
+    Promise.all(lieux.map(l => api.get(`/lieux/${l.id}/produits`).then(r => ({ lieuId: l.id, produits: r.data }))))
+      .then(results => {
+        const map = {};
+        results.forEach(r => {
+          const pl = r.produits.find(p => p.id === produit.id);
+          if (pl) map[r.lieuId] = { produit_lieu_id: pl.produit_lieu_id, emplacement_etagere: pl.emplacement_etagere || '', emplacement_etage: pl.emplacement_etage || '', emplacement: pl.emplacement || '' };
+        });
+        setLieuxProduit(map);
+      });
+  }, [produit.id, lieux]);
+
+  const toggleLieu = async (lieuId) => {
+    const estDedans = !!lieuxProduit[lieuId];
+    try {
+      if (estDedans) {
+        await api.delete(`/lieux/${lieuId}/produits/${lieuxProduit[lieuId].produit_lieu_id}`);
+        setLieuxProduit(p => { const n = { ...p }; delete n[lieuId]; return n; });
+      } else {
+        await api.post(`/lieux/${lieuId}/produits`, { produit_id: produit.id });
+        const { data } = await api.get(`/lieux/${lieuId}/produits`);
+        const pl = data.find(p => p.id === produit.id);
+        setLieuxProduit(p => ({ ...p, [lieuId]: { produit_lieu_id: pl.produit_lieu_id, emplacement_etagere: '', emplacement_etage: '', emplacement: '' } }));
+      }
+    } catch { toast.error('Erreur'); }
+  };
+
+  const saveEmplacementLieu = async (lieuId, field, value) => {
+    const current = lieuxProduit[lieuId] || {};
+    const updated = { ...current, [field]: value };
+    setLieuxProduit(p => ({ ...p, [lieuId]: updated }));
+    try {
+      await api.post(`/lieux/${lieuId}/produits`, {
+        produit_id: produit.id,
+        emplacement_etagere: updated.emplacement_etagere || null,
+        emplacement_etage: updated.emplacement_etage || null,
+        emplacement: updated.emplacement || null,
+      });
+    } catch { toast.error('Erreur de sauvegarde'); }
+  };
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -136,6 +179,15 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
       });
       if (photoFile) fd.append('photo', photoFile);
       await api.patch(`/produits/${produit.id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      // Sauvegarde les emplacements par lieu
+      for (const [lieuId, emp] of Object.entries(lieuxProduit)) {
+        await api.post(`/lieux/${lieuId}/produits`, {
+          produit_id: produit.id,
+          emplacement_etagere: emp.emplacement_etagere || null,
+          emplacement_etage: emp.emplacement_etage || null,
+          emplacement: emp.emplacement || null,
+        });
+      }
       toast.success('Produit mis à jour');
       setEditing(false);
       onSaved();
@@ -245,31 +297,43 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
           <Field label="Seuil de commande" field="seuil_commande" editing={editing} form={form} set={set} />
           <Field label="Consommation mensuelle" field="consommation_mensuelle" type="number" editing={editing} form={form} set={set} />
 
-          {/* Emplacement */}
+          {/* Lieux de stockage avec emplacement par lieu */}
           <div className="sm:col-span-2">
-            <label className="label"><MapPin size={12} className="inline mr-1" />Emplacement réserve</label>
-            {editing ? (
-              <div className="flex gap-3">
-                <select className="input" value={form.emplacement_etagere || ''} onChange={e => set('emplacement_etagere', e.target.value)}>
-                  <option value="">Étagère —</option>
-                  {etageres.map(e => <option key={e.id} value={e.name}>Étagère {e.name}</option>)}
-                </select>
-                <select className="input" value={form.emplacement_etage || ''} onChange={e => set('emplacement_etage', e.target.value)}>
-                  <option value="">Niveau —</option>
-                  {niveaux.map(n => <option key={n.id} value={n.name}>Niveau {n.name}</option>)}
-                </select>
-                <select className="input" value={form.emplacement || ''} onChange={e => set('emplacement', e.target.value)}>
-                  <option value="">Emplacement —</option>
-                  {emplacementsList.map(em => <option key={em.id} value={em.name}>{em.name}</option>)}
-                </select>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-900 py-2 border-b border-gray-100">
-                {form.emplacement_etagere && form.emplacement_etage
-                  ? `Étagère ${form.emplacement_etagere} — Niveau ${form.emplacement_etage}${form.emplacement ? ` — ${form.emplacement}` : ''}`
-                  : <span className="text-gray-400 italic">Non renseigné</span>}
-              </p>
-            )}
+            <label className="label"><MapPin size={12} className="inline mr-1" />Lieux de stockage</label>
+            <div className="space-y-3 py-2">
+              {lieux.map(l => {
+                const actif = !!lieuxProduit[l.id];
+                const emp = lieuxProduit[l.id] || {};
+                return (
+                  <div key={l.id} className={`rounded-xl border p-3 transition-colors ${actif ? 'border-primary-200 bg-primary-50' : 'border-gray-200'}`}>
+                    <div className="flex items-center gap-2 flex-wrap w-full">
+                      <button type="button" disabled={!editing} onClick={() => editing && toggleLieu(l.id)}
+                        className={`px-3 py-1 rounded-lg text-sm font-medium border transition-colors shrink-0 ${actif ? 'border-primary-400 bg-white text-primary-700' : 'border-gray-200 text-gray-500'} ${!editing ? 'opacity-50 pointer-events-none' : ''}`}>
+                        {actif ? '✓ ' : ''}{l.name}
+                      </button>
+                      {actif && <>
+                        <select className={`input text-sm py-1 flex-1 ${!editing ? 'opacity-50 pointer-events-none' : ''}`} value={emp.emplacement_etagere || ''} disabled={!editing}
+                          onChange={e => setLieuxProduit(p => ({ ...p, [l.id]: { ...p[l.id], emplacement_etagere: e.target.value } }))}>
+                          <option value="">Étagère —</option>
+                          {etageres.map(e => <option key={e.id} value={e.name}>Étagère {e.name}</option>)}
+                        </select>
+                        <select className={`input text-sm py-1 flex-1 ${!editing ? 'opacity-50 pointer-events-none' : ''}`} value={emp.emplacement_etage || ''} disabled={!editing}
+                          onChange={e => setLieuxProduit(p => ({ ...p, [l.id]: { ...p[l.id], emplacement_etage: e.target.value } }))}>
+                          <option value="">Niveau —</option>
+                          {niveaux.map(n => <option key={n.id} value={n.name}>Niveau {n.name}</option>)}
+                        </select>
+                        <select className={`input text-sm py-1 flex-1 ${!editing ? 'opacity-50 pointer-events-none' : ''}`} value={emp.emplacement || ''} disabled={!editing}
+                          onChange={e => setLieuxProduit(p => ({ ...p, [l.id]: { ...p[l.id], emplacement: e.target.value } }))}>
+                          <option value="">Emplacement —</option>
+                          {emplacementsList.map(em => <option key={em.id} value={em.name}>{em.name}</option>)}
+                        </select>
+                      </>}
+                    </div>
+                  </div>
+                );
+              })}
+              {lieux.length === 0 && <p className="text-sm text-gray-400 italic">Aucun lieu configuré</p>}
+            </div>
           </div>
         </div>
       </div>
@@ -288,6 +352,7 @@ export default function ProduitsPage() {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [showEmplacementsConfig, setShowEmplacementsConfig] = useState(false);
+  const [lieux, setLieux] = useState([]);
   const [etageres, setEtageres] = useState([]);
   const [niveaux, setNiveaux] = useState([]);
   const [emplacementsList, setEmplacementsList] = useState([]);
@@ -312,6 +377,7 @@ export default function ProduitsPage() {
       setEtageres(et.data);
       setNiveaux(niv.data);
       setEmplacementsList(emp.data);
+      api.get('/lieux').then(r => setLieux(r.data)).catch(() => {});
     } catch { toast.error('Erreur de chargement'); }
     finally { setLoading(false); }
   };
@@ -422,6 +488,7 @@ export default function ProduitsPage() {
           etageres={etageres}
           niveaux={niveaux}
           emplacementsList={emplacementsList}
+          lieux={lieux}
           canEdit={can('gestionnaire', 'admin')}
           onClose={() => setSelected(null)}
           onSaved={() => { load(); setSelected(null); }}
