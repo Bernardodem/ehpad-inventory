@@ -2,8 +2,104 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import toast from 'react-hot-toast';
-import { ShoppingCart, Printer, AlertTriangle, ChevronLeft, ChevronDown, ChevronUp } from 'lucide-react';
+import { ShoppingCart, Printer, AlertTriangle, ChevronLeft, ChevronDown, ChevronUp, Plus, X } from 'lucide-react';
 
+
+function CommandeLibreModal({ onClose, onSaved }) {
+  const [recherche, setRecherche] = useState('');
+  const [produits, setProduits] = useState([]);
+  const [quantites, setQuantites] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.get('/produits').then(r => setProduits(r.data)).catch(() => {});
+  }, []);
+
+  const produitsFiltres = recherche.length >= 2
+    ? produits.filter(p => p.denomination.toLowerCase().includes(recherche.toLowerCase()))
+    : produits;
+
+  const grouped = produitsFiltres.reduce((acc, p) => {
+    const cat = p.categorie || 'Sans catégorie';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(p);
+    return acc;
+  }, {});
+
+  const panier = produits.filter(p => quantites[p.id] > 0);
+  const nbProduits = panier.length;
+
+  const valider = async () => {
+    if (nbProduits === 0) { toast.error('Saisissez au moins une quantité'); return; }
+    setSaving(true);
+    try {
+      const parFournisseur = panier.reduce((acc, p) => {
+        const f = p.fournisseur || 'Sans fournisseur';
+        if (!acc[f]) acc[f] = { fournisseur_id: p.fournisseur_id, lignes: [] };
+        acc[f].lignes.push({ produit_id: p.id, quantite: quantites[p.id] });
+        return acc;
+      }, {});
+      for (const [, groupe] of Object.entries(parFournisseur)) {
+        await api.post('/commandes', { fournisseur_id: groupe.fournisseur_id, inventaire_session_id: null, lignes: groupe.lignes });
+      }
+      toast.success('Commande(s) créée(s)');
+      onSaved();
+    } catch { toast.error('Erreur lors de la création'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between mb-4 shrink-0">
+          <h2 className="font-bold text-gray-900">Commande sans inventaire</h2>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
+        </div>
+        <div className="mb-4 shrink-0">
+          <input
+            autoFocus
+            className="input w-full"
+            placeholder="Rechercher un produit..."
+            value={recherche}
+            onChange={e => setRecherche(e.target.value)}
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto space-y-4">
+          {Object.entries(grouped).map(([cat, items]) => (
+            <div key={cat}>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">{cat}</p>
+              <div className="bg-gray-50 rounded-xl overflow-hidden">
+                {items.map(p => (
+                  <div key={p.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-100 last:border-0">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{p.denomination}{p.taille && <span className="ml-2 badge-gray">{p.taille}</span>}</p>
+                      <p className="text-xs text-gray-400">
+                        {[p.fournisseur, p.conditionnement, p.dotation ? `Dotation : ${p.dotation}` : null].filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
+                    <input
+                      type="number" min="0" step="1"
+                      className={`w-20 text-center input text-sm py-1 ${quantites[p.id] > 0 ? 'border-primary-400 bg-primary-50' : ''}`}
+                      value={quantites[p.id] || ''}
+                      onChange={e => setQuantites(q => ({ ...q, [p.id]: Number(e.target.value) || 0 }))}
+                      placeholder="0"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2 mt-4 shrink-0">
+          <button onClick={valider} disabled={saving || nbProduits === 0} className="btn-primary flex-1 justify-center">
+            {saving ? 'Création...' : nbProduits > 0 ? `Valider (${nbProduits} produit${nbProduits > 1 ? 's' : ''})` : 'Valider'}
+          </button>
+          <button onClick={onClose} className="btn-secondary">Annuler</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function HistoriqueCommandes({ historique }) {
   const [expanded, setExpanded] = useState({});
@@ -125,6 +221,7 @@ export default function CommandePage() {
   const [sessions, setSessions] = useState([]);
   const [selectedSession, setSelectedSession] = useState(null);
   const [expandedFourn, setExpandedFourn] = useState({});
+  const [showCommandeLibre, setShowCommandeLibre] = useState(false);
   const [sousVue, setSousVue] = useState('encours'); // 'encours' | 'historique'
   const [historique, setHistorique] = useState([]);
 
@@ -162,10 +259,18 @@ export default function CommandePage() {
 
   if (!data?.session_id) {
     return (
-      <div className="card flex flex-col items-center justify-center h-64 text-gray-400 gap-3">
-        <AlertTriangle size={32} />
-        <p className="font-medium">Aucun inventaire terminé</p>
-        <p className="text-sm">Terminez un inventaire pour générer une commande</p>
+      <div className="space-y-4">
+        <div className="card flex flex-col items-center justify-center h-48 text-gray-400 gap-3">
+          <AlertTriangle size={32} />
+          <p className="font-medium">Aucun inventaire terminé</p>
+          <p className="text-sm">Terminez un inventaire pour générer une commande</p>
+        </div>
+        <div className="flex justify-center">
+          <button onClick={() => setShowCommandeLibre(true)} className="btn-primary">
+            <Plus size={16} /> Nouvelle commande sans inventaire
+          </button>
+        </div>
+        {showCommandeLibre && <CommandeLibreModal onClose={() => setShowCommandeLibre(false)} onSaved={() => { setShowCommandeLibre(false); loadCommandes(null); }} />}
       </div>
     );
   }
@@ -258,6 +363,13 @@ export default function CommandePage() {
           </div>
         </div>
       )}
+
+      <div className="flex justify-end mb-2">
+        <button onClick={() => setShowCommandeLibre(true)} className="btn-secondary text-sm">
+          <Plus size={15} /> Commande sans inventaire
+        </button>
+      </div>
+      {showCommandeLibre && <CommandeLibreModal onClose={() => setShowCommandeLibre(false)} onSaved={() => { setShowCommandeLibre(false); loadCommandes(selectedSession); }} />}
 
       {/* Sélecteur d'inventaire */}
       {sessions.length > 1 && (
