@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import api from '../api';
 import toast from 'react-hot-toast';
-import { Plus, Trash2, X, Search, Package } from 'lucide-react';
+import { Plus, Trash2, X, Search, Package, Settings } from 'lucide-react';
+import EmplacementsConfigModal from '../components/EmplacementsConfigModal';
 
 function GererProduitsModal({ lieu, onClose }) {
   const [produitsLieu, setProduitsLieu] = useState([]);
@@ -114,6 +115,7 @@ export default function LieuxPage() {
   const [newDesc, setNewDesc] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [gererLieu, setGererLieu] = useState(null);
+  const [emplacementsLieu, setEmplacementsLieu] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const load = () => api.get('/lieux').then(r => { setLieux(r.data); setLoading(false); });
@@ -146,7 +148,10 @@ export default function LieuxPage() {
           <h1 className="text-xl font-bold text-gray-900">Lieux de stockage</h1>
           <p className="text-sm text-gray-500 mt-0.5">{lieux.length} lieu{lieux.length > 1 ? 'x' : ''} configuré{lieux.length > 1 ? 's' : ''}</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="btn-primary"><Plus size={16} /> Nouveau lieu</button>
+        <div className="flex gap-2">
+
+          <button onClick={() => setShowForm(true)} className="btn-primary"><Plus size={16} /> Nouveau lieu</button>
+        </div>
       </div>
 
       {showForm && (
@@ -170,6 +175,7 @@ export default function LieuxPage() {
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setGererLieu(l)} className="btn-secondary text-sm">Gérer les produits</button>
+                <button onClick={() => setEmplacementsLieu(l)} className="btn-secondary text-sm">Emplacements</button>
                 <button onClick={() => supprimer(l.id)} className="p-2 rounded-lg border border-red-200 text-red-500 hover:bg-red-50"><Trash2 size={16} /></button>
               </div>
             </div>
@@ -178,6 +184,7 @@ export default function LieuxPage() {
       )}
 
       {gererLieu && <GererProduitsModal lieu={gererLieu} onClose={() => { setGererLieu(null); load(); }} />}
+      {emplacementsLieu && <EmplacementsConfigModal lieuId={emplacementsLieu.id} onClose={() => setEmplacementsLieu(null)} onSaved={() => {}} />}
     </div>
   );
 }
