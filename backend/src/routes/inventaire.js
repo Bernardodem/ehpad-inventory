@@ -77,12 +77,14 @@ router.post('/sessions/:sessionId/lignes', requireRole('inventaire', 'gestionnai
 
 router.get('/commande', requireRole('gestionnaire', 'admin'), async (req, res) => {
   try {
-    const lastSession = await pool.query(
-      `SELECT id FROM inventaire_sessions WHERE status = 'termine' ORDER BY finished_at DESC LIMIT 1`
-    );
-    if (lastSession.rows.length === 0) return res.json({ session: null, lignes: [] });
-
-    const sessionId = lastSession.rows[0].id;
+    let sessionId = req.query.session || null;
+    if (!sessionId) {
+      const lastSession = await pool.query(
+        `SELECT id FROM inventaire_sessions WHERE status = 'termine' ORDER BY finished_at DESC LIMIT 1`
+      );
+      if (lastSession.rows.length === 0) return res.json({ session: null, lignes: [] });
+      sessionId = lastSession.rows[0].id;
+    }
     const result = await pool.query(`
       SELECT
         p.id as produit_id,
