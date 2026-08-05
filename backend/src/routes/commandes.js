@@ -37,7 +37,20 @@ router.get('/:id', async (req, res) => {
       ORDER BY p.denomination
     `, [req.params.id]);
 
-    res.json({ ...commande.rows[0], lignes: lignes.rows });
+    const receptions = await pool.query(`
+      SELECT cr.*, cl.commande_id
+      FROM commande_receptions cr
+      JOIN commande_lignes cl ON cr.commande_ligne_id = cl.id
+      WHERE cl.commande_id = $1
+      ORDER BY cr.date_reception ASC
+    `, [req.params.id]);
+
+    const lignesAvecReceptions = lignes.rows.map(l => ({
+      ...l,
+      receptions: receptions.rows.filter(r => r.commande_ligne_id === l.id)
+    }));
+
+    res.json({ ...commande.rows[0], lignes: lignesAvecReceptions });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -72,6 +85,28 @@ router.patch('/:id/lignes/:ligneId', requireRole('gestionnaire', 'admin'), async
       [quantite_recue, req.params.ligneId, req.params.id]
     );
     res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Ajouter une reception partielle sur une ligne
+router.post('/:id/lignes/:ligneId/receptions', requireRole('gestionnaire', 'admin'), async (req, res) => {
+  const { quantite } = req.body;
+  if (!quantite || quantite <= 0) return res.status(400).json({ error: 'Quantité invalide' });
+  try {
+    const { randomUUID } = await import('crypto');
+    const id = randomUUID();
+    await pool.query(
+      `INSERT INTO commande_receptions (id, commande_ligne_id, quantite) VALUES ($1, $2, $3)`,
+      [id, req.params.ligneId, quantite]
+    );
+    // Mise a jour quantite_recue totale sur la ligne
+    await pool.query(
+      `UPDATE commande_lignes SET quantite_recue = (
+        SELECT COALESCE(SUM(quantite), 0) FROM commande_receptions WHERE commande_ligne_id = $1
+      ) WHERE id = $1`,
+      [req.params.ligneId]
+    );
+    res.status(201).json({ id });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

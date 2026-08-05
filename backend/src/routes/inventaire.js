@@ -115,4 +115,17 @@ router.get('/commande', requireRole('gestionnaire', 'admin'), async (req, res) =
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+router.get('/sessions/recentes', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, label, finished_at
+      FROM inventaire_sessions
+      WHERE status = 'termine'
+        AND finished_at > NOW() - INTERVAL '30 days'
+      ORDER BY finished_at DESC
+    `);
+    res.json(result.rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 export default router;

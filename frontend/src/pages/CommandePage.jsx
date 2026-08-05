@@ -1,8 +1,117 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import toast from 'react-hot-toast';
-import { ShoppingCart, Printer, AlertTriangle, ChevronLeft } from 'lucide-react';
+import { ShoppingCart, Printer, AlertTriangle, ChevronLeft, ChevronDown, ChevronUp } from 'lucide-react';
+
+
+function HistoriqueCommandes({ historique }) {
+  const [expanded, setExpanded] = useState({});
+  const [confirmSansVerif, setConfirmSansVerif] = useState(null);
+  const navigate = useNavigate();
+
+  const receptionnerSansVerif = async (commandeId) => {
+    try {
+      const { data: detail } = await api.get(`/commandes/${commandeId}`);
+      for (const l of detail.lignes) {
+        await api.post(`/commandes/${commandeId}/lignes/${l.id}/receptions`, { quantite: l.quantite_commandee });
+      }
+      await api.patch(`/commandes/${commandeId}/receptionner`, {});
+      toast.success('Réception enregistrée — tout reçu');
+      setConfirmSansVerif(null);
+      window.location.reload();
+    } catch { toast.error('Erreur'); }
+  };
+
+  const toggleExpand = async (id) => {
+    if (expanded[id]) { setExpanded(p => ({ ...p, [id]: null })); return; }
+    try {
+      const { data } = await api.get(`/commandes/${id}`);
+      setExpanded(p => ({ ...p, [id]: data }));
+    } catch {}
+  };
+
+  if (historique.length === 0) return <div className="card p-10 text-center text-gray-400">Aucune commande passée</div>;
+
+  return (
+    <>
+    {confirmSansVerif && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+        <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+          <h2 className="font-bold text-gray-900 mb-3">Réception sans vérification</h2>
+          <p className="text-sm text-gray-600 mb-5">Les quantités reçues seront considérées égales aux quantités commandées. Cette action est irréversible.</p>
+          <div className="flex gap-2">
+            <button onClick={() => receptionnerSansVerif(confirmSansVerif)} className="btn-primary flex-1 justify-center">Confirmer</button>
+            <button onClick={() => setConfirmSansVerif(null)} className="btn-secondary">Annuler</button>
+          </div>
+        </div>
+      </div>
+    )}
+    <div className="space-y-3">
+      {historique.map(c => (
+        <div key={c.id} className="card overflow-hidden">
+          <button className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors" onClick={() => toggleExpand(c.id)}>
+            <div className="text-left">
+              <p className="font-semibold text-sm text-gray-800">{c.fournisseur}</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {new Date(c.date_validation).toLocaleDateString('fr-FR')} · {c.nb_lignes} référence{c.nb_lignes > 1 ? 's' : ''}
+                {!c.inventaire_session_id && ' · Sans inventaire'}
+              </p>
+            </div>
+            <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+              c.status === 'validee' ? 'bg-amber-50 text-amber-700' :
+              c.status === 'recue_partielle' ? 'bg-blue-50 text-blue-700' :
+              'bg-green-50 text-green-700'
+            }`}>
+              {c.status === 'validee' ? 'En attente' : c.status === 'recue_partielle' ? 'Reçue partiellement' : 'Reçue'}
+            </span>
+          </button>
+          {c.status === 'recue_partielle' && (
+            <div className="px-4 py-2 bg-blue-50 border-t border-blue-100 flex justify-end">
+              <button onClick={() => navigate(`/reception?commande=${c.id}`)}
+                className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-100">
+                Compléter la réception
+              </button>
+            </div>
+          )}
+          {c.status === 'validee' && (
+            <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 flex justify-end gap-2">
+              <button onClick={e => { e.stopPropagation(); navigate(`/reception?commande=${c.id}`); }}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100">
+                Réceptionner
+              </button>
+              <button onClick={e => { e.stopPropagation(); setConfirmSansVerif(c.id); }}
+                className="text-xs px-3 py-1.5 rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-50">
+                Réception sans vérification
+              </button>
+            </div>
+          )}
+          {expanded[c.id] && (
+            <table className="w-full text-sm">
+              <thead className="border-b border-gray-100 bg-white">
+                <tr className="text-xs text-gray-500 font-semibold uppercase tracking-wide">
+                  <th className="text-left px-4 py-2">Dénomination</th>
+                  <th className="text-center px-4 py-2">Commandé</th>
+                  {expanded[c.id].lignes.some(l => l.quantite_recue !== null) && <th className="text-center px-4 py-2">Reçu</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {expanded[c.id].lignes.map(l => (
+                  <tr key={l.id} className="border-b border-gray-50">
+                    <td className="px-4 py-2 text-gray-900">{l.denomination}{l.taille && <span className="ml-2 badge-gray">{l.taille}</span>}</td>
+                    <td className="px-4 py-2 text-center">{l.quantite_commandee}</td>
+                    {expanded[c.id].lignes.some(l => l.quantite_recue !== null) && <td className="px-4 py-2 text-center">{l.quantite_recue ?? '—'}</td>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ))}
+    </div>
+    </>
+  );
+}
 
 export default function CommandePage() {
   const [data, setData] = useState(null);
@@ -13,22 +122,41 @@ export default function CommandePage() {
   const [quantitesModifiees, setQuantitesModifiees] = useState({});
 
   const [commandesExistantes, setCommandesExistantes] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [selectedSession, setSelectedSession] = useState(null);
+  const [expandedFourn, setExpandedFourn] = useState({});
+  const [sousVue, setSousVue] = useState('encours'); // 'encours' | 'historique'
+  const [historique, setHistorique] = useState([]);
 
   const loadCommandes = (sessionId) => {
     api.get('/commandes').then(r => {
       setCommandesExistantes(r.data.filter(c => c.inventaire_session_id === sessionId));
+      setHistorique(r.data);
     });
   };
 
   useEffect(() => {
+    api.get('/inventaire/sessions/recentes').then(r => setSessions(r.data)).catch(() => {});
     api.get('/inventaire/commande')
       .then(r => {
         setData(r.data);
+        setSelectedSession(r.data.session_id || null);
         if (r.data.session_id) loadCommandes(r.data.session_id);
       })
       .catch(() => toast.error('Erreur de chargement'))
       .finally(() => setLoading(false));
   }, []);
+
+  const chargerSession = async (sessionId) => {
+    setSelectedSession(sessionId);
+    setLoading(true);
+    try {
+      const r = await api.get(`/inventaire/commande?session=${sessionId}`);
+      setData(r.data);
+      loadCommandes(sessionId);
+    } catch { toast.error('Erreur de chargement'); }
+    finally { setLoading(false); }
+  };
 
   if (loading) return <div className="flex items-center justify-center h-48 text-gray-400">Chargement…</div>;
 
@@ -85,6 +213,11 @@ export default function CommandePage() {
 
   const commandeExistePour = (fournisseurId) => commandesExistantes.find(c => c.fournisseur_id === fournisseurId);
 
+  const toutesValidees = fournisseursDisponibles.length > 0 && fournisseursDisponibles.every(f => {
+    const fournisseurId = data?.lignes?.find(l => l.fournisseur === f)?.fournisseur_id;
+    return fournisseurId && commandeExistePour(fournisseurId);
+  });
+
   const getQuantite = (l) => quantitesModifiees[l.produit_id] ?? l.qte_a_commander;
 
   return (
@@ -92,14 +225,25 @@ export default function CommandePage() {
       <Link to="/" className="sm:hidden flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-3">
         <ChevronLeft size={16} /> Accueil
       </Link>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Commande à passer</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{totalLignes} référence{totalLignes > 1 ? 's' : ''} à commander</p>
+          <h1 className="text-xl font-bold text-gray-900">
+            {sousVue === 'historique' ? 'Historique des commandes' :
+              toutesValidees ? 'Toutes les commandes validées ✓' : 'Commande à passer'}
+          </h1>
+          {sousVue === 'encours' && !toutesValidees && (
+            <p className="text-sm text-gray-500 mt-0.5">{totalLignes} référence{totalLignes > 1 ? 's' : ''} à commander</p>
+          )}
         </div>
         <button className="btn-secondary" onClick={handlePrint}><Printer size={16} /> Imprimer</button>
       </div>
+      <div className="flex gap-1 bg-white rounded-xl p-1 shadow-sm border border-gray-100 mb-4">
+        <button onClick={() => setSousVue('encours')} className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${sousVue === 'encours' ? 'text-white' : 'text-gray-500 hover:text-gray-700'}`} style={sousVue === 'encours' ? { background: '#4A2C2A' } : {}}>À commander</button>
+        <button onClick={() => setSousVue('enattente')} className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${sousVue === 'enattente' ? 'text-white' : 'text-gray-500 hover:text-gray-700'}`} style={sousVue === 'enattente' ? { background: '#4A2C2A' } : {}}>En cours</button>
+        <button onClick={() => setSousVue('historique')} className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${sousVue === 'historique' ? 'text-white' : 'text-gray-500 hover:text-gray-700'}`} style={sousVue === 'historique' ? { background: '#4A2C2A' } : {}}>Historique</button>
+      </div>
 
+      {sousVue === 'encours' && <div>
       {/* Alertes péremption */}
       {peremptionAlert.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5 flex gap-3">
@@ -112,6 +256,20 @@ export default function CommandePage() {
               ))}
             </ul>
           </div>
+        </div>
+      )}
+
+      {/* Sélecteur d'inventaire */}
+      {sessions.length > 1 && (
+        <div className="mb-4 flex gap-2 flex-wrap items-center">
+          <label className="text-sm text-gray-500">Inventaire :</label>
+          <select className="input w-auto" value={selectedSession || ''} onChange={e => chargerSession(e.target.value)}>
+            {sessions.map(s => (
+              <option key={s.id} value={s.id}>
+                {s.label} — {new Date(s.finished_at).toLocaleDateString('fr-FR')}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 
@@ -134,26 +292,33 @@ export default function CommandePage() {
         </div>
       ) : (
         <div className="space-y-5">
-          {Object.entries(grouped).map(([fourn, items]) => {
+          {Object.entries(grouped).filter(([fourn, items]) => {
+            const fournisseurId = items[0]?.fournisseur_id;
+            return !commandeExistePour(fournisseurId);
+          }).map(([fourn, items]) => {
             const fournisseurId = items[0]?.fournisseur_id;
             const commande = commandeExistePour(fournisseurId);
+            const isExpanded = expandedFourn[fourn];
             return (
             <div key={fourn} className="card overflow-hidden">
-              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+              <button className="w-full px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between hover:bg-gray-100 transition-colors" onClick={() => setExpandedFourn(p => ({ ...p, [fourn]: !p[fourn] }))}>
                 <h2 className="font-bold text-sm text-gray-700 uppercase tracking-wide">{fourn}</h2>
-                {commande ? (
-                  <span className="badge-green text-xs px-3 py-1.5">✓ Commande validée</span>
-                ) : (
-                  <button
-                    className="btn-primary text-xs py-1.5 px-3"
-                    disabled={validating === fourn}
-                    onClick={() => validerCommande(fourn, items)}
-                  >
-                    {validating === fourn ? 'Validation...' : 'Valider la commande'}
-                  </button>
-                )}
-              </div>
-              <table className="w-full text-sm">
+                <div className="flex items-center gap-2">
+                  {commande ? (
+                    <span className="badge-green text-xs px-3 py-1.5">✓ Validée le {new Date(commande.date_validation).toLocaleDateString('fr-FR')}</span>
+                  ) : (
+                    <button
+                      className="btn-primary text-xs py-1.5 px-3"
+                      disabled={validating === fourn}
+                      onClick={e => { e.stopPropagation(); validerCommande(fourn, items); }}
+                    >
+                      {validating === fourn ? 'Validation...' : 'Valider la commande'}
+                    </button>
+                  )}
+                  {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                </div>
+              </button>
+              {isExpanded && <table className="w-full text-sm">
                 <thead className="border-b border-gray-100">
                   <tr className="text-xs text-gray-500 font-semibold uppercase tracking-wide">
                     <th className="text-left px-4 py-2">Dénomination</th>
@@ -193,12 +358,28 @@ export default function CommandePage() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table>}
             </div>
             );
           })}
         </div>
       )}
+      </div>}
+
+      {sousVue === 'enattente' && (
+        <div className="space-y-3">
+          {historique.filter(c => c.status === 'validee').length === 0 ? (
+            <div className="card p-10 text-center text-gray-400">Aucune commande en attente de réception</div>
+          ) : (
+            <HistoriqueCommandes historique={historique.filter(c => c.status === 'validee')} />
+          )}
+        </div>
+      )}
+
+      {sousVue === 'historique' && (
+        <HistoriqueCommandes historique={historique.filter(c => c.status !== 'validee')} />
+      )}
+
     </div>
   );
 }
