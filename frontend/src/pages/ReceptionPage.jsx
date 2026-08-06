@@ -130,14 +130,20 @@ export default function ReceptionPage() {
 
               {expanded[c.id] && (
                 <div>
-                  <div className="px-4 py-2 border-b border-gray-100">
+                  <div className="px-4 py-2 border-b border-gray-100 relative">
                     <input
                       type="text"
-                      className="input w-full text-sm py-1.5"
+                      className="input w-full text-sm py-1.5 pr-8"
                       placeholder="Rechercher un article..."
                       value={recherches[c.id] || ''}
                       onChange={e => setRecherches(p => ({ ...p, [c.id]: e.target.value }))}
                     />
+                    {recherches[c.id] && (
+                      <button onClick={() => setRecherches(p => ({ ...p, [c.id]: '' }))}
+                        className="absolute right-6 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                        ✕
+                      </button>
+                    )}
                   </div>
                   <table className="hidden sm:table w-full text-sm">
                     <thead className="border-b border-gray-100 bg-white">
