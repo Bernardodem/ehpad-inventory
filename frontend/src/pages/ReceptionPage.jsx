@@ -12,6 +12,7 @@ export default function ReceptionPage() {
   const [quantites, setQuantites] = useState({});
   const [saving, setSaving] = useState(null);
   const [valides, setValides] = useState({}); // { ligneId: true }
+  const [recherches, setRecherches] = useState({}); // { commandeId: string }
   const [searchParams, setSearchParams] = useSearchParams();
 
   const load = async () => {
@@ -129,6 +130,15 @@ export default function ReceptionPage() {
 
               {expanded[c.id] && (
                 <div>
+                  <div className="px-4 py-2 border-b border-gray-100">
+                    <input
+                      type="text"
+                      className="input w-full text-sm py-1.5"
+                      placeholder="Rechercher un article..."
+                      value={recherches[c.id] || ''}
+                      onChange={e => setRecherches(p => ({ ...p, [c.id]: e.target.value }))}
+                    />
+                  </div>
                   <table className="hidden sm:table w-full text-sm">
                     <thead className="border-b border-gray-100 bg-white">
                       <tr className="text-xs text-gray-500 font-semibold uppercase tracking-wide">
@@ -140,7 +150,7 @@ export default function ReceptionPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {expanded[c.id].lignes.map(l => (
+                      {expanded[c.id].lignes.filter(l => !recherches[c.id] || l.denomination.toLowerCase().includes(recherches[c.id].toLowerCase())).map(l => (
                         <tr key={l.id} className="border-b border-gray-50 align-top">
                           <td className="px-4 py-3 font-medium text-gray-900">
                             {l.denomination}
@@ -195,7 +205,7 @@ export default function ReceptionPage() {
 
                   {/* Mobile : cartes */}
                   <div className="sm:hidden divide-y divide-gray-50">
-                    {expanded[c.id].lignes.map(l => (
+                    {expanded[c.id].lignes.filter(l => !recherches[c.id] || l.denomination.toLowerCase().includes(recherches[c.id].toLowerCase())).map(l => (
                       <div key={l.id} className="px-4 py-3 space-y-2">
                         <p className="font-medium text-gray-900">{l.denomination}{l.taille && <span className="ml-2 badge-gray">{l.taille}</span>}</p>
                         <div className="flex items-center justify-between text-sm">
