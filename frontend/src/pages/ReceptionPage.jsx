@@ -128,7 +128,7 @@ export default function ReceptionPage() {
 
               {expanded[c.id] && (
                 <div>
-                  <table className="w-full text-sm">
+                  <table className="hidden sm:table w-full text-sm">
                     <thead className="border-b border-gray-100 bg-white">
                       <tr className="text-xs text-gray-500 font-semibold uppercase tracking-wide">
                         <th className="text-left px-4 py-2">Dénomination</th>
@@ -183,6 +183,33 @@ export default function ReceptionPage() {
                       ))}
                     </tbody>
                   </table>
+
+                  {/* Mobile : cartes */}
+                  <div className="sm:hidden divide-y divide-gray-50">
+                    {expanded[c.id].lignes.map(l => (
+                      <div key={l.id} className="px-4 py-3 space-y-2">
+                        <p className="font-medium text-gray-900">{l.denomination}{l.taille && <span className="ml-2 badge-gray">{l.taille}</span>}</p>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-500">Commandé : <strong>{l.quantite_commandee}</strong></span>
+                          {l.receptions?.length > 0 && <span className="text-gray-500">Déjà reçu : <strong>{l.quantite_recue ?? 0}</strong></span>}
+                        </div>
+                        {l.receptions?.length > 0 && (
+                          <div className="text-xs text-gray-400 space-y-0.5">
+                            {l.receptions.map(r => <p key={r.id}>{r.quantite} reçu(e)s le {new Date(r.date_reception).toLocaleDateString('fr-FR')}</p>)}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 bg-blue-50 rounded-lg px-3 py-2">
+                          <label className="text-xs text-blue-700 font-medium shrink-0">Réception du jour :</label>
+                          <input type="number" min="0" step="1"
+                            className="flex-1 text-center input text-sm py-1"
+                            value={quantites[l.id] ?? ''}
+                            onChange={e => setQuantites(p => ({ ...p, [l.id]: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
                   <div className="px-4 py-3 bg-gray-50 flex justify-end">
                     <button
                       onClick={() => finaliserReception(c.id)}
