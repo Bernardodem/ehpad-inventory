@@ -11,6 +11,7 @@ export default function ReceptionPage() {
   const [expanded, setExpanded] = useState({});
   const [quantites, setQuantites] = useState({});
   const [saving, setSaving] = useState(null);
+  const [valides, setValides] = useState({}); // { ligneId: true }
   const [searchParams, setSearchParams] = useSearchParams();
 
   const load = async () => {
@@ -135,6 +136,7 @@ export default function ReceptionPage() {
                         <th className="text-center px-4 py-2">Commandé</th>
                         <th className="text-center px-4 py-2">Historique réceptions</th>
                         <th className="text-center px-4 py-2 bg-blue-50 text-blue-700">Ajouter réception</th>
+                        <th className="text-center px-4 py-2 bg-green-50 text-green-700">Validé</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -162,8 +164,9 @@ export default function ReceptionPage() {
                           <td className="px-4 py-3 text-center bg-blue-50">
                             <input
                               type="number" min="0" step="1"
-                              className="w-20 text-center input text-sm py-1 mx-auto block"
+                              className={`w-20 text-center input text-sm py-1 mx-auto block ${valides[l.id] ? 'opacity-50 pointer-events-none bg-gray-50' : ''}`}
                               value={quantites[l.id] ?? ''}
+                              disabled={!!valides[l.id]}
                               onChange={e => {
                                 const val = e.target.value;
                                 setQuantites(p => ({ ...p, [l.id]: val }));
@@ -178,6 +181,12 @@ export default function ReceptionPage() {
                                 }
                               }}
                             />
+                          </td>
+                          <td className="px-4 py-3 text-center bg-green-50">
+                            <button
+                              onClick={() => setValides(p => ({ ...p, [l.id]: !p[l.id] }))}
+                              className={`w-8 h-8 rounded-full border-2 mx-auto flex items-center justify-center transition-colors ${valides[l.id] ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-transparent hover:border-green-400'}`}
+                            >✓</button>
                           </td>
                         </tr>
                       ))}
@@ -198,13 +207,20 @@ export default function ReceptionPage() {
                             {l.receptions.map(r => <p key={r.id}>{r.quantite} reçu(e)s le {new Date(r.date_reception).toLocaleDateString('fr-FR')}</p>)}
                           </div>
                         )}
-                        <div className="flex items-center gap-2 bg-blue-50 rounded-lg px-3 py-2">
-                          <label className="text-xs text-blue-700 font-medium shrink-0">Réception du jour :</label>
-                          <input type="number" min="0" step="1"
-                            className="flex-1 text-center input text-sm py-1"
-                            value={quantites[l.id] ?? ''}
-                            onChange={e => setQuantites(p => ({ ...p, [l.id]: e.target.value }))}
-                          />
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 bg-blue-50 rounded-lg px-3 py-2 flex-1">
+                            <label className="text-xs text-blue-700 font-medium shrink-0">Réception du jour :</label>
+                            <input type="number" min="0" step="1"
+                              className={`flex-1 text-center input text-sm py-1 ${valides[l.id] ? 'opacity-50 pointer-events-none bg-gray-50' : ''}`}
+                              value={quantites[l.id] ?? ''}
+                              disabled={!!valides[l.id]}
+                              onChange={e => setQuantites(p => ({ ...p, [l.id]: e.target.value }))}
+                            />
+                          </div>
+                          <button
+                            onClick={() => setValides(p => ({ ...p, [l.id]: !p[l.id] }))}
+                            className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-colors shrink-0 ${valides[l.id] ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 text-gray-300 hover:border-green-400'}`}
+                          >✓</button>
                         </div>
                       </div>
                     ))}
@@ -217,7 +233,11 @@ export default function ReceptionPage() {
                       className="btn-primary"
                     >
                       <CheckCircle size={16} />
-                      {saving === c.id ? 'Finalisation...' : 'Finaliser la réception'}
+                      {saving === c.id ? 'Finalisation...' : (() => {
+                        const lignes = expanded[c.id]?.lignes || [];
+                        const nbValides = lignes.filter(l => valides[l.id]).length;
+                        return nbValides === lignes.length ? 'Finaliser la réception' : `Finaliser (${nbValides}/${lignes.length} validés)`;
+                      })()}
                     </button>
                   </div>
                 </div>
