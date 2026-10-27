@@ -1,5 +1,4 @@
 import pg from 'pg';
-import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 
 const { Pool } = pg;
@@ -35,6 +34,14 @@ export async function initDb() {
       name TEXT UNIQUE NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS lieux_stockage (
+      id TEXT PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL,
+      description TEXT,
+      ordre INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS produits (
       id TEXT PRIMARY KEY,
       denomination TEXT NOT NULL,
@@ -44,14 +51,50 @@ export async function initDb() {
       fournisseur_id TEXT REFERENCES fournisseurs(id),
       conditionnement TEXT,
       consommation_mensuelle REAL,
-      dotation REAL,
-      seuil_commande TEXT,
       prix REAL,
-      emplacement_etagere TEXT CHECK(emplacement_etagere IN ('A','B','C') OR emplacement_etagere IS NULL),
-      emplacement_etage INTEGER,
       photo_url TEXT,
       created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW()
+      updated_at TIMESTAMP DEFAULT NOW(),
+      archived BOOLEAN DEFAULT false,
+      sans_peremption BOOLEAN DEFAULT false,
+      peremption_sans_jour BOOLEAN DEFAULT false
+    );
+
+    -- Dotation, seuil et emplacement sont propres a chaque lieu de stockage
+    CREATE TABLE IF NOT EXISTS produit_lieu (
+      id TEXT PRIMARY KEY,
+      produit_id TEXT NOT NULL REFERENCES produits(id) ON DELETE CASCADE,
+      lieu_id TEXT NOT NULL REFERENCES lieux_stockage(id) ON DELETE CASCADE,
+      dotation REAL,
+      seuil_commande REAL,
+      emplacement_etagere TEXT,
+      emplacement_etage TEXT,
+      emplacement TEXT,
+      UNIQUE (produit_id, lieu_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS etageres (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      ordre INTEGER DEFAULT 0,
+      lieu_id TEXT REFERENCES lieux_stockage(id) ON DELETE CASCADE,
+      CONSTRAINT etageres_lieu_name_unique UNIQUE (lieu_id, name)
+    );
+
+    CREATE TABLE IF NOT EXISTS niveaux (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      ordre INTEGER DEFAULT 0,
+      lieu_id TEXT REFERENCES lieux_stockage(id) ON DELETE CASCADE,
+      CONSTRAINT niveaux_lieu_name_unique UNIQUE (lieu_id, name)
+    );
+
+    CREATE TABLE IF NOT EXISTS emplacements (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      ordre INTEGER DEFAULT 0,
+      lieu_id TEXT REFERENCES lieux_stockage(id) ON DELETE CASCADE,
+      CONSTRAINT emplacements_lieu_name_unique UNIQUE (lieu_id, name)
     );
 
     CREATE TABLE IF NOT EXISTS inventaire_sessions (
@@ -60,9 +103,10 @@ export async function initDb() {
       type TEXT NOT NULL CHECK(type IN ('total','partiel')),
       categories TEXT,
       status TEXT DEFAULT 'en_cours' CHECK(status IN ('en_cours','termine')),
-      created_by TEXT REFERENCES users(id),
+      created_by TEXT,
       created_at TIMESTAMP DEFAULT NOW(),
-      finished_at TIMESTAMP
+      finished_at TIMESTAMP,
+      lieu_id TEXT REFERENCES lieux_stockage(id)
     );
 
     CREATE TABLE IF NOT EXISTS inventaires (
@@ -71,8 +115,33 @@ export async function initDb() {
       quantite REAL NOT NULL,
       date_peremption TEXT,
       inventaire_session_id TEXT NOT NULL,
-      created_by TEXT REFERENCES users(id),
+      created_by TEXT,
       created_at TIMESTAMP DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS commandes (
+      id TEXT PRIMARY KEY,
+      fournisseur_id TEXT NOT NULL REFERENCES fournisseurs(id),
+      inventaire_session_id TEXT REFERENCES inventaire_sessions(id),
+      status TEXT DEFAULT 'validee' NOT NULL CHECK(status IN ('validee','recue_partielle','recue')),
+      date_validation TIMESTAMP DEFAULT NOW(),
+      date_reception TIMESTAMP,
+      created_by TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS commande_lignes (
+      id TEXT PRIMARY KEY,
+      commande_id TEXT NOT NULL REFERENCES commandes(id) ON DELETE CASCADE,
+      produit_id TEXT NOT NULL REFERENCES produits(id),
+      quantite_commandee REAL NOT NULL,
+      quantite_recue REAL
+    );
+
+    CREATE TABLE IF NOT EXISTS commande_receptions (
+      id TEXT PRIMARY KEY,
+      commande_ligne_id TEXT NOT NULL REFERENCES commande_lignes(id) ON DELETE CASCADE,
+      quantite REAL NOT NULL,
+      date_reception TIMESTAMP DEFAULT NOW()
     );
   `);
 
@@ -88,17 +157,10 @@ export async function initDb() {
     await pool.query(`INSERT INTO fournisseurs (id, name) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING`, [randomUUID(), f]);
   }
 
-  // Seed admin
-  const existing = await pool.query(`SELECT id FROM users WHERE username = 'admin'`);
-  if (existing.rows.length === 0) {
-    const hash = bcrypt.hashSync('Admin2024!', 10);
-    const hashInv = bcrypt.hashSync('Inv2024!', 10);
-    await pool.query(`INSERT INTO users (id, username, password_hash, full_name, role) VALUES ($1,$2,$3,$4,$5)`,
-      [randomUUID(), 'admin', hash, 'Administrateur', 'admin']);
-    await pool.query(`INSERT INTO users (id, username, password_hash, full_name, role) VALUES ($1,$2,$3,$4,$5)`,
-      [randomUUID(), 'idec', hash, 'IDEC Arc en Ciel', 'gestionnaire']);
-    await pool.query(`INSERT INTO users (id, username, password_hash, full_name, role) VALUES ($1,$2,$3,$4,$5)`,
-      [randomUUID(), 'inventaire1', hashInv, 'Agent Inventaire', 'inventaire']);
+  // Seed lieu de stockage par defaut
+  const lieuxCount = await pool.query(`SELECT COUNT(*) as c FROM lieux_stockage`);
+  if (parseInt(lieuxCount.rows[0].c) === 0) {
+    await pool.query(`INSERT INTO lieux_stockage (id, name, ordre) VALUES ($1, $2, 0)`, [randomUUID(), 'Stock médical']);
   }
 
   // Seed produits
@@ -106,6 +168,7 @@ export async function initDb() {
   if (parseInt(countRes.rows[0].c) === 0) {
     const getCat = async name => (await pool.query(`SELECT id FROM categories WHERE name = $1`, [name])).rows[0]?.id;
     const getFour = async name => (await pool.query(`SELECT id FROM fournisseurs WHERE name = $1`, [name])).rows[0]?.id;
+    const lieuId = (await pool.query(`SELECT id FROM lieux_stockage ORDER BY ordre, created_at LIMIT 1`)).rows[0]?.id;
 
     const produits = [
       ['Blédine', '400g', 'Alimentation', null, 'Blédina France', 'Unité', 15, 20, null],
@@ -153,15 +216,20 @@ export async function initDb() {
     for (const [denom, taille, cat, ref, four, cond, conso, dotation, seuil] of produits) {
       const catId = await getCat(cat);
       const fourId = await getFour(four);
+      const produitId = randomUUID();
       await pool.query(
-        `INSERT INTO produits (id, denomination, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, consommation_mensuelle, dotation, seuil_commande)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [randomUUID(), denom, taille||null, catId||null, ref||null, fourId||null, cond||null, conso||null, dotation||null, seuil||null]
+        `INSERT INTO produits (id, denomination, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, consommation_mensuelle)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [produitId, denom, taille||null, catId||null, ref||null, fourId||null, cond||null, conso||null]
+      );
+      // Dotation et seuil rattaches au lieu par defaut ('0,5 boite' -> 0.5)
+      const seuilNum = seuil ? parseFloat(seuil.replace(',', '.')) : null;
+      await pool.query(
+        `INSERT INTO produit_lieu (id, produit_id, lieu_id, dotation, seuil_commande) VALUES ($1,$2,$3,$4,$5)`,
+        [randomUUID(), produitId, lieuId, dotation ?? null, Number.isNaN(seuilNum) ? null : seuilNum]
       );
     }
   }
-
-await pool.query(`ALTER TABLE produits ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT false`);
 
   console.log('Base de données PostgreSQL initialisée');
 }
