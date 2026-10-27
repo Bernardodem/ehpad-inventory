@@ -1,13 +1,37 @@
 # EHPAD Arc en Ciel — Gestion des stocks
 **MAPAD Group | Application interne**
 
-## Comptes par défaut (à changer immédiatement en prod)
+Dotations par lieu de stockage, inventaires, commandes fournisseurs et réceptions.
+L'application fait partie de la suite **Mon Arc en Ciel** : la connexion passe par le SSO.
 
-| Identifiant | Mot de passe | Rôle |
-|-------------|-------------|------|
-| admin | Admin2024! | Administrateur |
-| idec | Admin2024! | Gestionnaire de commande |
-| inventaire1 | Inv2024! | Inventaire |
+---
+
+## Connexion et comptes
+
+Il n'y a **pas de compte local ni de mot de passe par défaut** : les utilisateurs se connectent sur le SSO
+(code de vérification envoyé par mail), qui renvoie vers l'application avec un jeton.
+
+- Les comptes sont créés dans le SSO par un administrateur. Chaque nouvel utilisateur reçoit un mail
+  « Activez votre compte » pour choisir son mot de passe (lien valable 7 jours).
+- Pour accéder aux stocks, l'application **Gestion des stocks** doit être activée pour l'utilisateur dans le SSO.
+  Sans cet accès, l'API répond 403.
+
+### Rôles
+
+| Rôle dans le SSO | Rôle dans les stocks |
+|---|---|
+| admin d'établissement / admin groupe | admin |
+| Gestion des stocks : admin | admin |
+| Gestion des stocks : gestionnaire | gestionnaire |
+| Gestion des stocks : utilisateur | inventaire |
+
+| Fonctionnalité | Inventaire | Gestionnaire | Admin |
+|---|---|---|---|
+| Consulter le catalogue | ✅ | ✅ | ✅ |
+| Saisir un inventaire | ✅ | ✅ | ✅ |
+| Voir et passer les commandes | ❌ | ✅ | ✅ |
+| Modifier les fiches produit | ❌ | ✅ | ✅ |
+| Gérer les lieux de stockage et les utilisateurs | ❌ | ❌ | ✅ |
 
 ---
 
@@ -15,129 +39,104 @@
 
 ```
 ehpad-inventory/
-├── backend/          → API Node.js + SQLite (Express)
+├── backend/          → API Node.js (Express) + PostgreSQL
 │   └── src/
-│       ├── index.js         → Point d'entrée
-│       ├── db/init.js       → Base de données + seed
-│       ├── middleware/auth.js
-│       └── routes/
-│           ├── auth.js
-│           ├── users.js
-│           ├── produits.js
-│           └── inventaire.js
-└── frontend/         → React + Vite + Tailwind
+│       ├── index.js           → Point d'entrée
+│       ├── db/init.js         → Création du schéma + données d'exemple
+│       ├── middleware/auth.js → Vérification du jeton SSO et des rôles
+│       └── routes/            → auth, users, produits, lieux, emplacements, inventaire, commandes
+└── frontend/         → React + Vite + Tailwind, servi sous /stocks/
     └── src/
-        ├── pages/    → Login, Home, Produits, Inventaire, Commande, Utilisateurs
+        ├── pages/    → Home, Produits, Lieux, Inventaire, Commande, Réception, Utilisateurs
         ├── components/
-        └── contexts/
+        └── contexts/ → AuthContext (récupère le jeton SSO)
 ```
+
+En production, nginx sert le frontend sur `https://monaec.fr/stocks/` et redirige `/stocks/api/` vers le backend (port 3001).
 
 ---
 
-## Déploiement cloud (Railway — recommandé, gratuit tier disponible)
+## Installation sur un nouveau serveur
 
-### Prérequis
-- Compte GitHub : https://github.com
-- Compte Railway : https://railway.app
+### 1. SSO
 
-### Étape 1 — Préparer le dépôt GitHub
+Le SSO doit être installé en premier. Dans son `.env`, renseigner l'adresse de l'administrateur :
+
+```
+ADMIN_EMAIL=prenom.nom@exemple.fr
+ADMIN_PRENOM=Prénom
+ADMIN_NOM=Nom
+```
+
+Au premier démarrage, le SSO crée ce compte et lui envoie un **lien d'activation** pour choisir son mot de passe.
+Le lien est aussi écrit dans les logs du SSO, au cas où le mail n'arriverait pas.
+
+### 2. Base de données
 
 ```bash
-git init
-git add .
-git commit -m "Initial commit — EHPAD Arc en Ciel"
-# Créer un repo sur GitHub, puis :
-git remote add origin https://github.com/TON_COMPTE/ehpad-inventory.git
-git push -u origin main
+sudo -u postgres createuser -P ehpad_user
+sudo -u postgres createdb -O ehpad_user ehpad
 ```
 
-### Étape 2 — Déployer le backend sur Railway
+### 3. Backend
 
-1. Sur railway.app → "New Project" → "Deploy from GitHub repo"
-2. Choisir `ehpad-inventory`
-3. Dans "Settings" → "Root Directory" : mettre `backend`
-4. Dans "Variables" → ajouter :
-   - `JWT_SECRET` = une chaîne aléatoire longue (ex: générer sur https://passwordsgenerator.net/)
-   - `NODE_ENV` = `production`
-   - `FRONTEND_URL` = l'URL de ton frontend (à renseigner après étape 3)
-5. Railway détectera automatiquement le `package.json` et lancera `npm start`
-6. Copier l'URL générée (ex: `https://ehpad-backend-xxx.railway.app`)
-
-**Important : Volume persistant**
-Dans Railway → ton service → "Volumes" → ajouter un volume monté sur `/app/data`
-(pour que la base SQLite survive aux redémarrages)
-
-### Étape 3 — Déployer le frontend sur Vercel
-
-```bash
-cd frontend
-# Créer le fichier .env.production
-echo "VITE_API_URL=https://ehpad-backend-xxx.railway.app" > .env.production
-```
-
-Modifier `frontend/src/api.js` ligne 3 :
-```js
-const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || '/api' });
-```
-
-1. Sur vercel.com → "New Project" → importer le repo GitHub
-2. "Root Directory" : `frontend`
-3. Variables d'environnement : `VITE_API_URL` = URL Railway du backend
-4. Déployer → Vercel donne une URL `https://ehpad-xxx.vercel.app`
-
-5. Retourner sur Railway → mettre cette URL dans `FRONTEND_URL`
-
----
-
-## Développement local
-
-### Backend
 ```bash
 cd backend
-npm install
-node src/index.js
-# → http://localhost:3001
+npm ci
 ```
 
-### Frontend
+Créer `backend/.env` (droits `600`, jamais versionné) :
+
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | `postgresql://ehpad_user:<mot de passe>@localhost:5432/ehpad` |
+| `SSO_JWT_SECRET` | Même valeur que `JWT_SECRET` dans le `.env` du SSO (obligatoire) |
+| `STOCKS_APP_ID` | Identifiant de l'application « Gestion des stocks » dans le SSO (obligatoire) |
+| `PORT` | `3001` |
+| `FRONTEND_URL` | `https://monaec.fr` |
+| `NODE_ENV` | `production` |
+
+L'identifiant de l'application se lit dans la base du SSO :
+```sql
+SELECT id FROM applications WHERE nom = 'Gestion des stocks';
+```
+
+Le backend refuse de démarrer si `SSO_JWT_SECRET` ou `STOCKS_APP_ID` manque.
+Au premier démarrage, `init.js` crée toutes les tables, un lieu « Stock médical » et un catalogue d'exemple avec ses dotations.
+
+Le backend tourne comme service systemd (`ehpad-inventory.service`) :
+```bash
+sudo systemctl enable --now ehpad-inventory
+sudo journalctl -u ehpad-inventory -f
+```
+
+### 4. Frontend
+
 ```bash
 cd frontend
-npm install
-npm run dev
-# → http://localhost:5173
+npm ci
+npm run build   # → frontend/dist, servi par nginx sous /stocks/
 ```
 
 ---
 
-## Fonctionnalités
+## Fonctionnement
 
-### Rôles et accès
-| Fonctionnalité | Inventaire | Gestionnaire | Admin |
-|---|---|---|---|
-| Consulter le catalogue | ✅ | ✅ | ✅ |
-| Saisir un inventaire | ✅ | ✅ | ✅ |
-| Voir les commandes | ❌ | ✅ | ✅ |
-| Modifier les fiches produit | ❌ | ✅ | ✅ |
-| Gérer les utilisateurs | ❌ | ❌ | ✅ |
+### Dotations par lieu
+Chaque produit peut être stocké dans plusieurs lieux (ex. « Stock médical », « Plan bleu »).
+La dotation, le seuil de commande et l'emplacement sont définis **par lieu** (table `produit_lieu`).
 
-### Flux de travail inventaire → commande
-1. Créer une session d'inventaire (total ou partiel par catégorie)
-2. Saisir les quantités en stock + dates de péremption
+### Flux inventaire → commande → réception
+1. Créer une session d'inventaire pour un lieu (totale ou partielle par catégorie)
+2. Saisir les quantités en stock et les dates de péremption
 3. Terminer la session
-4. Le gestionnaire consulte la vue "Commande" : quantité à commander = Dotation − Stock actuel
+4. Le gestionnaire consulte la vue « Commande » : quantité à commander = dotation du lieu − stock compté
+5. Valider la commande par fournisseur, puis enregistrer les réceptions (totales ou partielles)
 
 ---
 
-## Évolutions possibles (non incluses dans ce prototype)
+## Évolutions possibles
 - Export PDF de la commande (avec en-tête MAPAD Group)
 - Import/mise à jour du catalogue via fichier Excel
 - Historique des inventaires avec graphiques de consommation
 - Notifications automatiques (email) quand le stock approche du seuil
-- Module de réception de commande
-
----
-
-## Support technique
-Pour toute question technique sur le déploiement, se référer à :
-- Railway docs : https://docs.railway.app
-- Vercel docs : https://vercel.com/docs
