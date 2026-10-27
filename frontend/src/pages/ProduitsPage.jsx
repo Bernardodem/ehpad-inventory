@@ -33,9 +33,10 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ ...produit });
   const [photoFile, setPhotoFile] = useState(null);
+  const [deletePhoto, setDeletePhoto] = useState(false);
   const [selected, setSelected] = useState(null);
 
-  useEffect(() => { setForm({ ...produit }); }, [produit]);
+  useEffect(() => { setForm({ ...produit }); setPhotoFile(null); setDeletePhoto(false); }, [produit]);
   const [loading, setLoading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [showEmplacementsConfig, setShowEmplacementsConfig] = useState(false);
@@ -46,7 +47,7 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
   const [emplacementsParLieu, setEmplacementsParLieu] = useState({});
 
   const loadEmplacementsLieu = async (lieuId) => {
-    if (etageresParLieu[lieuId]) return; // Déjà chargé
+    if (etageresParLieu[lieuId]) return;
     const [et, niv, emp] = await Promise.all([
       api.get(`/emplacements-config/etageres?lieu_id=${lieuId}`),
       api.get(`/emplacements-config/niveaux?lieu_id=${lieuId}`),
@@ -55,7 +56,7 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
     setEtageresParLieu(p => ({ ...p, [lieuId]: et.data }));
     setNiveauxParLieu(p => ({ ...p, [lieuId]: niv.data }));
     setEmplacementsParLieu(p => ({ ...p, [lieuId]: emp.data }));
-  }; // { lieuId: { produit_lieu_id, emplacement_etagere, emplacement_etage, emplacement } }
+  };
 
   useEffect(() => {
     if (!lieux || !lieux.length) return;
@@ -65,7 +66,17 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
         const lieuxActifs = [];
         results.forEach(r => {
           const pl = r.produits.find(p => p.id === produit.id);
-          if (pl) { map[r.lieuId] = { produit_lieu_id: pl.produit_lieu_id, emplacement_etagere: pl.emplacement_etagere || '', emplacement_etage: pl.emplacement_etage || '', emplacement: pl.emplacement || '' }; lieuxActifs.push(r.lieuId); }
+          if (pl) {
+            map[r.lieuId] = {
+              produit_lieu_id: pl.produit_lieu_id,
+              emplacement_etagere: pl.emplacement_etagere || '',
+              emplacement_etage: pl.emplacement_etage || '',
+              emplacement: pl.emplacement || '',
+              dotation: pl.dotation_lieu != null ? pl.dotation_lieu : (pl.dotation != null ? pl.dotation : ''),
+              seuil_commande: pl.seuil_lieu != null ? pl.seuil_lieu : (pl.seuil_commande != null ? pl.seuil_commande : ''),
+            };
+            lieuxActifs.push(r.lieuId);
+          }
         });
         setLieuxProduit(map);
         lieuxActifs.forEach(lid => loadEmplacementsLieu(lid));
@@ -82,7 +93,7 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
         await api.post(`/lieux/${lieuId}/produits`, { produit_id: produit.id });
         const { data } = await api.get(`/lieux/${lieuId}/produits`);
         const pl = data.find(p => p.id === produit.id);
-        setLieuxProduit(p => ({ ...p, [lieuId]: { produit_lieu_id: pl.produit_lieu_id, emplacement_etagere: '', emplacement_etage: '', emplacement: '' } }));
+        setLieuxProduit(p => ({ ...p, [lieuId]: { produit_lieu_id: pl.produit_lieu_id, emplacement_etagere: '', emplacement_etage: '', emplacement: '', dotation: '', seuil_commande: '' } }));
         await loadEmplacementsLieu(lieuId);
       }
     } catch { toast.error('Erreur'); }
@@ -98,6 +109,8 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
         emplacement_etagere: updated.emplacement_etagere || null,
         emplacement_etage: updated.emplacement_etage || null,
         emplacement: updated.emplacement || null,
+        dotation: updated.dotation !== '' ? updated.dotation : null,
+        seuil_commande: updated.seuil_commande !== '' ? updated.seuil_commande : null,
       });
     } catch { toast.error('Erreur de sauvegarde'); }
   };
@@ -112,14 +125,16 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
         if (v !== null && v !== undefined && k !== 'categorie' && k !== 'fournisseur') fd.append(k, v);
       });
       if (photoFile) fd.append('photo', photoFile);
+      if (deletePhoto) fd.append('delete_photo', 'true');
       await api.patch(`/produits/${produit.id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      // Sauvegarde les emplacements par lieu
       for (const [lieuId, emp] of Object.entries(lieuxProduit)) {
         await api.post(`/lieux/${lieuId}/produits`, {
           produit_id: produit.id,
           emplacement_etagere: emp.emplacement_etagere || null,
           emplacement_etage: emp.emplacement_etage || null,
           emplacement: emp.emplacement || null,
+          dotation: emp.dotation !== '' ? emp.dotation : null,
+          seuil_commande: emp.seuil_commande !== '' ? emp.seuil_commande : null,
         });
       }
       toast.success('Produit mis à jour');
@@ -132,11 +147,9 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
     }
   };
 
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-        {/* Header */}
         <div className="flex items-start justify-between p-5 border-b border-gray-100">
           <div>
             <h2 className="font-bold text-lg text-gray-900">{produit.denomination}</h2>
@@ -147,7 +160,7 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
   <>
     <button className="btn-secondary" onClick={() => setEditing(true)}><Edit2 size={15} /> Modifier</button>
     <button className="btn-danger" onClick={async () => {
-      if (!window.confirm('Archiver ce produit ? Il n\'apparaîtra plus dans le catalogue.')) return;
+      if (!window.confirm("Archiver ce produit ? Il n'apparaîtra plus dans le catalogue.")) return;
       try {
         await api.delete(`/produits/${produit.id}`);
         toast.success('Produit archivé');
@@ -167,15 +180,19 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
           </div>
         </div>
 
-        {/* Body */}
         <div className="overflow-y-auto p-5 grid sm:grid-cols-2 gap-4">
-          {/* Photo */}
           <div className="sm:col-span-2 flex items-start gap-4">
-            <div className="w-24 h-24 rounded-xl bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0 border border-gray-200">
-              {(photoFile ? URL.createObjectURL(photoFile) : produit.photo_url) ? (
+            <div className="relative w-24 h-24 rounded-xl bg-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0 border border-gray-200">
+              {(photoFile ? URL.createObjectURL(photoFile) : (!deletePhoto && produit.photo_url)) ? (
                 <img src={photoFile ? URL.createObjectURL(photoFile) : produit.photo_url} alt="" className="w-full h-full object-cover" />
               ) : (
                 <Package size={32} className="text-gray-300" />
+              )}
+              {editing && (photoFile || (!deletePhoto && produit.photo_url)) && (
+                <button onClick={() => { setPhotoFile(null); setDeletePhoto(true); }}
+                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs leading-none hover:bg-red-600">
+                  ×
+                </button>
               )}
             </div>
             {editing && (
@@ -194,7 +211,7 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
           <Field label="Réf. fournisseur" field="ref_fournisseur" editing={editing} form={form} set={set} />
           <Field label="Conditionnement" field="conditionnement" editing={editing} form={form} set={set} />
           <Field label="Prix (€)" field="prix" type="number" editing={editing} form={form} set={set} />
-          <Field label="Dotation" field="dotation" type="number" editing={editing} form={form} set={set} />
+          <Field label="Consommation mensuelle" field="consommation_mensuelle" type="number" editing={editing} form={form} set={set} />
           <div>
             <label className="label">Péremption</label>
             {editing ? (
@@ -228,10 +245,6 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
             )}
           </div>
 
-          <Field label="Seuil de commande" field="seuil_commande" editing={editing} form={form} set={set} />
-          <Field label="Consommation mensuelle" field="consommation_mensuelle" type="number" editing={editing} form={form} set={set} />
-
-          {/* Lieux de stockage avec emplacement par lieu */}
           <div className="sm:col-span-2">
             <label className="label"><MapPin size={12} className="inline mr-1" />Lieux de stockage</label>
             <div className="space-y-3 py-2">
@@ -261,6 +274,26 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
                           <option value="">Emplacement —</option>
                           {(emplacementsParLieu[l.id] || emplacementsList).map(em => <option key={em.id} value={em.name}>{em.name}</option>)}
                         </select>
+                        <div className="w-full flex gap-2 mt-2">
+                          <div className="flex-1">
+                            <label className="text-xs text-gray-500 mb-1 block">Dotation</label>
+                            {editing ? (
+                              <input type="number" className="input text-sm py-1 w-full" placeholder="—" value={emp.dotation ?? ''}
+                                onChange={e => saveEmplacementLieu(l.id, 'dotation', e.target.value)} />
+                            ) : (
+                              <span className="text-sm text-gray-900">{emp.dotation !== '' && emp.dotation != null ? emp.dotation : <span className="text-gray-400">—</span>}</span>
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-xs text-gray-500 mb-1 block">Seuil de commande</label>
+                            {editing ? (
+                              <input type="number" className="input text-sm py-1 w-full" placeholder="—" value={emp.seuil_commande ?? ''}
+                                onChange={e => saveEmplacementLieu(l.id, 'seuil_commande', e.target.value)} />
+                            ) : (
+                              <span className="text-sm text-gray-900">{emp.seuil_commande !== '' && emp.seuil_commande != null ? emp.seuil_commande : <span className="text-gray-400">—</span>}</span>
+                            )}
+                          </div>
+                        </div>
                       </>}
                     </div>
                   </div>
@@ -318,7 +351,6 @@ export default function ProduitsPage() {
 
   useEffect(() => { load(); }, [search, catFilter]);
 
-  // Group by category
   const grouped = produits.reduce((acc, p) => {
     const cat = p.categorie || 'Sans catégorie';
     if (!acc[cat]) acc[cat] = [];
@@ -357,8 +389,6 @@ export default function ProduitsPage() {
                       <th className="text-left px-4 py-2.5 font-semibold text-gray-600">Dénomination</th>
                       <th className="text-left px-4 py-2.5 font-semibold text-gray-600 hidden sm:table-cell">Conditionnement</th>
                       <th className="text-left px-4 py-2.5 font-semibold text-gray-600 hidden md:table-cell">Fournisseur</th>
-                      <th className="text-center px-4 py-2.5 font-semibold text-gray-600">Dotation</th>
-
                     </tr>
                   </thead>
                   <tbody>
@@ -370,10 +400,6 @@ export default function ProduitsPage() {
                         </td>
                         <td className="px-4 py-2.5 text-gray-500 hidden sm:table-cell">{p.conditionnement || '—'}</td>
                         <td className="px-4 py-2.5 text-gray-500 hidden md:table-cell">{p.fournisseur || '—'}</td>
-                        <td className="px-4 py-2.5 text-center">
-                          {p.dotation ? <span className="badge-blue">{p.dotation}</span> : <span className="text-gray-300">—</span>}
-                        </td>
-
                       </tr>
                     ))}
                   </tbody>
@@ -386,8 +412,6 @@ export default function ProduitsPage() {
           )}
         </div>
       )}
-
-
 
 {can('gestionnaire', 'admin') && (
   <button className="btn-primary fixed bottom-6 right-6 shadow-lg w-44 justify-center" onClick={() => setShowAdd(true)}>
@@ -423,7 +447,7 @@ export default function ProduitsPage() {
 }
 
 function AddProduitModal({ categories, fournisseurs, onClose, onSaved }) {
-  const [form, setForm] = useState({ denomination: '', taille: '', categorie_id: '', fournisseur_id: '', conditionnement: '', dotation: '', seuil_commande: '', prix: '', sans_peremption: false });
+  const [form, setForm] = useState({ denomination: '', taille: '', categorie_id: '', fournisseur_id: '', conditionnement: '', prix: '', sans_peremption: false });
   const [loading, setLoading] = useState(false);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
@@ -461,7 +485,6 @@ function AddProduitModal({ categories, fournisseurs, onClose, onSaved }) {
             </select>
           </div>
           <div><label className="label">Conditionnement</label><input className="input" value={form.conditionnement} onChange={e => set('conditionnement', e.target.value)} /></div>
-          <div><label className="label">Dotation</label><input className="input" type="number" value={form.dotation} onChange={e => set('dotation', e.target.value)} /></div>
           <div className="col-span-2">
             <label className="flex items-center gap-2 py-2 text-sm text-gray-700 cursor-pointer">
               <input type="checkbox" checked={!!form.sans_peremption} onChange={e => set('sans_peremption', e.target.checked)} className="w-4 h-4 accent-primary-600" />
@@ -474,7 +497,6 @@ function AddProduitModal({ categories, fournisseurs, onClose, onSaved }) {
               Dates de péremption au format mois/année
             </label>
           </div>
-          <div><label className="label">Seuil de commande</label><input className="input" value={form.seuil_commande} onChange={e => set('seuil_commande', e.target.value)} /></div>
           <div><label className="label">Prix (€)</label><input className="input" type="number" value={form.prix} onChange={e => set('prix', e.target.value)} /></div>
         </div>
         <div className="flex gap-2 mt-5">

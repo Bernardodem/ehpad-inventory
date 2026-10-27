@@ -3,6 +3,8 @@ import { randomUUID } from 'crypto';
 import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import sharp from 'sharp';
+import fs from 'fs/promises';
 import { pool } from '../db/init.js';
 import { authMiddleware, requireRole } from '../middleware/auth.js';
 
@@ -14,7 +16,14 @@ const storage = multer.diskStorage({
   destination: path.join(__dirname, '../../uploads'),
   filename: (req, file, cb) => cb(null, `${randomUUID()}${path.extname(file.originalname)}`)
 });
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 } });
+
+const convertToJpeg = async (filePath) => {
+  const jpegPath = filePath.replace(/\.[^.]+$/, '') + '_converted.jpg';
+  await sharp(filePath).rotate().jpeg({ quality: 85 }).toFile(jpegPath);
+  await fs.unlink(filePath);
+  return jpegPath;
+};
 
 const PRODUIT_SELECT = `
   SELECT p.*, c.name as categorie, f.name as fournisseur,
@@ -70,7 +79,7 @@ router.get('/:id', async (req, res) => {
 
 router.patch('/:id', requireRole('gestionnaire', 'admin'), upload.single('photo'), async (req, res) => {
   try {
-    const fields = ['denomination','taille','ref_fournisseur','conditionnement','consommation_mensuelle','dotation','seuil_commande','prix','emplacement_etagere','emplacement_etage','emplacement','categorie_id','fournisseur_id','sans_peremption','peremption_sans_jour'];
+    const fields = ['denomination','taille','ref_fournisseur','conditionnement','consommation_mensuelle','prix','categorie_id','fournisseur_id','sans_peremption','peremption_sans_jour'];
     const updates = [];
     const vals = [];
     let i = 1;
@@ -83,8 +92,18 @@ router.patch('/:id', requireRole('gestionnaire', 'admin'), upload.single('photo'
     });
 
     if (req.file) {
+      try {
+        const jpegPath = await convertToJpeg(req.file.path);
+        const filename = path.basename(jpegPath);
+        updates.push(`photo_url = $${i++}`);
+        vals.push(`/stocks/uploads/${filename}`);
+      } catch (sharpErr) {
+        console.error('SHARP ERROR:', sharpErr.message, 'file:', req.file.path, 'mimetype:', req.file.mimetype, 'size:', req.file.size);
+        return res.status(500).json({ error: 'Erreur conversion image: ' + sharpErr.message });
+      }
+    } else if (req.body.delete_photo === 'true') {
       updates.push(`photo_url = $${i++}`);
-      vals.push(`/uploads/${req.file.filename}`);
+      vals.push(null);
     }
 
     if (updates.length === 0) return res.status(400).json({ error: 'Aucune donnée à mettre à jour' });
@@ -98,13 +117,13 @@ router.patch('/:id', requireRole('gestionnaire', 'admin'), upload.single('photo'
 
 router.post('/', requireRole('gestionnaire', 'admin'), async (req, res) => {
   try {
-    const { denomination, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, consommation_mensuelle, dotation, seuil_commande, prix, sans_peremption, peremption_sans_jour } = req.body;
+    const { denomination, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, consommation_mensuelle, prix, sans_peremption, peremption_sans_jour } = req.body;
     if (!denomination) return res.status(400).json({ error: 'Dénomination requise' });
     const id = randomUUID();
     await pool.query(
-      `INSERT INTO produits (id, denomination, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, consommation_mensuelle, dotation, seuil_commande, prix, sans_peremption, peremption_sans_jour)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-      [id, denomination, taille||null, categorie_id||null, ref_fournisseur||null, fournisseur_id||null, conditionnement||null, consommation_mensuelle||null, dotation||null, seuil_commande||null, prix||null, sans_peremption === 'true' || sans_peremption === true, peremption_sans_jour === 'true' || peremption_sans_jour === true]
+      `INSERT INTO produits (id, denomination, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, consommation_mensuelle, prix, sans_peremption, peremption_sans_jour)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [id, denomination, taille||null, categorie_id||null, ref_fournisseur||null, fournisseur_id||null, conditionnement||null, consommation_mensuelle||null, prix||null, sans_peremption === 'true' || sans_peremption === true, peremption_sans_jour === 'true' || peremption_sans_jour === true]
     );
     res.status(201).json({ id });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -118,5 +137,5 @@ router.delete('/:id', requireRole('gestionnaire', 'admin'), async (req, res) => 
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
-
 export default router;
+
