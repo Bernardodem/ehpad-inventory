@@ -41,10 +41,12 @@ router.patch('/sessions/:id/finish', requireRole('inventaire', 'gestionnaire', '
 router.get('/sessions/:sessionId/lignes', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT i.*, p.denomination, p.conditionnement, p.dotation, p.seuil_commande,
+      SELECT i.*, p.denomination, p.conditionnement, pl.dotation, pl.seuil_commande,
              c.name as categorie
       FROM inventaires i
       JOIN produits p ON i.produit_id = p.id
+      JOIN inventaire_sessions s ON s.id = i.inventaire_session_id
+      LEFT JOIN produit_lieu pl ON pl.produit_id = p.id AND pl.lieu_id = s.lieu_id
       LEFT JOIN categories c ON p.categorie_id = c.id
       WHERE i.inventaire_session_id = $1
       ORDER BY c.name, p.denomination
@@ -100,14 +102,14 @@ router.get('/commande', requireRole('gestionnaire', 'admin'), async (req, res) =
           p.ref_fournisseur,
           p.fournisseur_id,
           f.name as fournisseur,
-          COALESCE(pl.dotation, p.dotation) as dotation,
-          COALESCE(pl.seuil_commande, p.seuil_commande) as seuil_commande,
+          pl.dotation,
+          pl.seuil_commande,
           p.prix,
           i.quantite as stock_actuel,
           i.date_peremption,
           CASE
-            WHEN COALESCE(pl.dotation, p.dotation) IS NOT NULL AND i.quantite IS NOT NULL
-            THEN GREATEST(0, CAST(COALESCE(pl.dotation, p.dotation) AS REAL) - CAST(i.quantite AS REAL))
+            WHEN pl.dotation IS NOT NULL AND i.quantite IS NOT NULL
+            THEN GREATEST(0, CAST(pl.dotation AS REAL) - CAST(i.quantite AS REAL))
             ELSE NULL
           END as qte_a_commander,
           c.name as categorie
@@ -129,22 +131,27 @@ router.get('/commande', requireRole('gestionnaire', 'admin'), async (req, res) =
           p.ref_fournisseur,
           p.fournisseur_id,
           f.name as fournisseur,
-          p.dotation,
-          p.seuil_commande,
+          pl.dotation,
+          pl.seuil_commande,
           p.prix,
           i.quantite as stock_actuel,
           i.date_peremption,
           CASE
-            WHEN p.dotation IS NOT NULL AND i.quantite IS NOT NULL
-            THEN GREATEST(0, CAST(p.dotation AS REAL) - CAST(i.quantite AS REAL))
+            WHEN pl.dotation IS NOT NULL AND i.quantite IS NOT NULL
+            THEN GREATEST(0, CAST(pl.dotation AS REAL) - CAST(i.quantite AS REAL))
             ELSE NULL
           END as qte_a_commander,
           c.name as categorie
         FROM produits p
+        -- Session sans lieu : dotation globale = valeur max tous lieux confondus
+        JOIN (
+          SELECT produit_id, MAX(dotation) as dotation, MAX(seuil_commande) as seuil_commande
+          FROM produit_lieu GROUP BY produit_id
+        ) pl ON pl.produit_id = p.id
         LEFT JOIN inventaires i ON i.produit_id = p.id AND i.inventaire_session_id = $1
         LEFT JOIN categories c ON p.categorie_id = c.id
         LEFT JOIN fournisseurs f ON p.fournisseur_id = f.id
-        WHERE p.archived = false AND p.dotation IS NOT NULL
+        WHERE p.archived = false AND pl.dotation IS NOT NULL
         ORDER BY c.name, p.denomination
       `, [sessionId]);
     }
