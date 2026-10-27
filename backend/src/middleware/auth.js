@@ -1,7 +1,21 @@
 import jwt from 'jsonwebtoken';
 
-const SSO_SECRET = process.env.SSO_JWT_SECRET || 'SsoSecretMonArcEnCiel2024';
-const JWT_SECRET = process.env.JWT_SECRET || 'ehpad-arc-en-ciel-secret-2024';
+// Secret partage avec le SSO, qui signe les jetons (jamais de valeur par defaut dans le code)
+const SSO_SECRET = process.env.SSO_JWT_SECRET;
+if (!SSO_SECRET) throw new Error('SSO_JWT_SECRET manquant dans le .env');
+
+// Identifiant de l'application "Gestion des stocks" dans le SSO
+const STOCKS_APP_ID = process.env.STOCKS_APP_ID;
+if (!STOCKS_APP_ID) throw new Error('STOCKS_APP_ID manquant dans le .env');
+
+// Roles du SSO -> roles de l'appli stocks
+const SSO_ROLES = { utilisateur: 'inventaire', gestionnaire: 'gestionnaire', admin: 'admin' };
+
+function resolveRole(user) {
+  if (['admin_groupe', 'admin_etablissement'].includes(user.role_global)) return 'admin';
+  const app = (user.apps || []).find(a => a.id === STOCKS_APP_ID);
+  return SSO_ROLES[app?.role] || null;
+}
 
 export function authMiddleware(req, res, next) {
   const header = req.headers.authorization;
@@ -9,41 +23,23 @@ export function authMiddleware(req, res, next) {
     return res.status(401).json({ error: 'Token manquant' });
   }
   try {
-    const token = header.slice(7);
-    // Essaie d'abord le secret SSO, puis le secret local
-    try {
-      req.user = jwt.verify(token, SSO_SECRET);
-    } catch {
-      req.user = jwt.verify(token, JWT_SECRET);
-    }
-    next();
+    req.user = jwt.verify(header.slice(7), SSO_SECRET);
   } catch {
     return res.status(401).json({ error: 'Token invalide ou expiré' });
   }
+  // Pas d'acces accorde a l'appli stocks dans le SSO : refus
+  req.user.role = resolveRole(req.user);
+  if (!req.user.role) {
+    return res.status(403).json({ error: 'Accès à la gestion des stocks non autorisé' });
+  }
+  next();
 }
 
 export function requireRole(...roles) {
   return (req, res, next) => {
-    let role = req.user.role;
-    if (!role) {
-      if (['admin_groupe', 'admin_etablissement'].includes(req.user.role_global)) {
-        role = 'admin';
-      } else {
-        const app = (req.user.apps || []).find(a => a.id === process.env.STOCKS_APP_ID);
-        role = app?.role || 'gestionnaire';
-      }
-    }
-    if (!roles.includes(role)) {
+    if (!roles.includes(req.user.role)) {
       return res.status(403).json({ error: 'Accès interdit' });
     }
     next();
   };
-}
-
-export function signToken(user) {
-  return jwt.sign(
-    { id: user.id, username: user.username, role: user.role, full_name: user.full_name },
-    JWT_SECRET,
-    { expiresIn: '8h' }
-  );
 }
