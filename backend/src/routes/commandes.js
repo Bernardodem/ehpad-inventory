@@ -31,7 +31,7 @@ router.get('/:id', async (req, res) => {
     if (commande.rows.length === 0) return res.status(404).json({ error: 'Commande introuvable' });
 
     const lignes = await pool.query(`
-      SELECT cl.*, p.denomination, p.taille, p.conditionnement
+      SELECT cl.*, p.denomination, p.taille, p.conditionnement, p.conditionnement_type, p.conditionnement_quantite, p.conditionnement_quantite_non_precisee
       FROM commande_lignes cl JOIN produits p ON cl.produit_id = p.id
       WHERE cl.commande_id = $1
       ORDER BY p.denomination

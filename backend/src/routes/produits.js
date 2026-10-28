@@ -25,6 +25,20 @@ const convertToJpeg = async (filePath) => {
   return jpegPath;
 };
 
+// Conditionnement : un sachet, un carton ou une boite exige un nombre d'unites,
+// sauf si celui-ci est explicitement declare non precise
+const CONDITIONNEMENT_TYPES = ['unite', 'sachet', 'carton', 'boite'];
+
+function normaliserConditionnement(type, quantite, nonPrecisee) {
+  type = type || 'unite';
+  if (!CONDITIONNEMENT_TYPES.includes(type)) return { error: 'Type de conditionnement inconnu' };
+  if (type === 'unite') return { type, quantite: null, nonPrecisee: false };
+  if (nonPrecisee === true || nonPrecisee === 'true') return { type, quantite: null, nonPrecisee: true };
+  const n = Number(quantite);
+  if (!Number.isInteger(n) || n < 1) return { error: "Nombre d'unités requis (ou cocher « non précisé »)" };
+  return { type, quantite: n, nonPrecisee: false };
+}
+
 const PRODUIT_SELECT = `
   SELECT p.*, c.name as categorie, f.name as fournisseur,
     (SELECT i.date_peremption FROM inventaires i WHERE i.produit_id = p.id AND i.date_peremption IS NOT NULL AND i.date_peremption != '' ORDER BY i.created_at DESC LIMIT 1) as derniere_peremption
@@ -41,7 +55,7 @@ router.get('/', async (req, res) => {
     const conditions = ["(p.archived IS NULL OR p.archived = false)"];
 
     if (categorie) { conditions.push(`c.name = $${params.length + 1}`); params.push(categorie); }
-    if (search) { conditions.push(`p.denomination ILIKE $${params.length + 1}`); params.push(`%${search}%`); }
+    if (search) { conditions.push(`(p.denomination ILIKE $${params.length + 1} OR p.appellation_interne ILIKE $${params.length + 1})`); params.push(`%${search}%`); }
     if (lieu_id) {
       query = query.replace('FROM produits p', 'FROM produits p JOIN produit_lieu pl ON pl.produit_id = p.id AND pl.lieu_id = $' + (params.length + 1));
       params.push(lieu_id);
@@ -79,7 +93,7 @@ router.get('/:id', async (req, res) => {
 
 router.patch('/:id', requireRole('gestionnaire', 'admin'), upload.single('photo'), async (req, res) => {
   try {
-    const fields = ['denomination','taille','ref_fournisseur','conditionnement','consommation_mensuelle','prix','categorie_id','fournisseur_id','sans_peremption','peremption_sans_jour'];
+    const fields = ['denomination','appellation_interne','taille','ref_fournisseur','conditionnement','consommation_mensuelle','prix','categorie_id','fournisseur_id','sans_peremption','peremption_sans_jour'];
     const updates = [];
     const vals = [];
     let i = 1;
@@ -90,6 +104,13 @@ router.patch('/:id', requireRole('gestionnaire', 'admin'), upload.single('photo'
         vals.push(req.body[f] === '' ? null : req.body[f]);
       }
     });
+
+    if (req.body.conditionnement_type !== undefined) {
+      const c = normaliserConditionnement(req.body.conditionnement_type, req.body.conditionnement_quantite, req.body.conditionnement_quantite_non_precisee);
+      if (c.error) return res.status(400).json({ error: c.error });
+      updates.push(`conditionnement_type = $${i++}`, `conditionnement_quantite = $${i++}`, `conditionnement_quantite_non_precisee = $${i++}`);
+      vals.push(c.type, c.quantite, c.nonPrecisee);
+    }
 
     if (req.file) {
       try {
@@ -117,13 +138,15 @@ router.patch('/:id', requireRole('gestionnaire', 'admin'), upload.single('photo'
 
 router.post('/', requireRole('gestionnaire', 'admin'), async (req, res) => {
   try {
-    const { denomination, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, consommation_mensuelle, prix, sans_peremption, peremption_sans_jour } = req.body;
+    const { denomination, appellation_interne, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, conditionnement_type, conditionnement_quantite, conditionnement_quantite_non_precisee, consommation_mensuelle, prix, sans_peremption, peremption_sans_jour } = req.body;
     if (!denomination) return res.status(400).json({ error: 'Dénomination requise' });
+    const c = normaliserConditionnement(conditionnement_type, conditionnement_quantite, conditionnement_quantite_non_precisee);
+    if (c.error) return res.status(400).json({ error: c.error });
     const id = randomUUID();
     await pool.query(
-      `INSERT INTO produits (id, denomination, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, consommation_mensuelle, prix, sans_peremption, peremption_sans_jour)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [id, denomination, taille||null, categorie_id||null, ref_fournisseur||null, fournisseur_id||null, conditionnement||null, consommation_mensuelle||null, prix||null, sans_peremption === 'true' || sans_peremption === true, peremption_sans_jour === 'true' || peremption_sans_jour === true]
+      `INSERT INTO produits (id, denomination, appellation_interne, taille, categorie_id, ref_fournisseur, fournisseur_id, conditionnement, conditionnement_type, conditionnement_quantite, conditionnement_quantite_non_precisee, consommation_mensuelle, prix, sans_peremption, peremption_sans_jour)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      [id, denomination, appellation_interne||null, taille||null, categorie_id||null, ref_fournisseur||null, fournisseur_id||null, conditionnement||null, c.type, c.quantite, c.nonPrecisee, consommation_mensuelle||null, prix||null, sans_peremption === 'true' || sans_peremption === true, peremption_sans_jour === 'true' || peremption_sans_jour === true]
     );
     res.status(201).json({ id });
   } catch (err) { res.status(500).json({ error: err.message }); }

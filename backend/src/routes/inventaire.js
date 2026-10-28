@@ -41,7 +41,7 @@ router.patch('/sessions/:id/finish', requireRole('inventaire', 'gestionnaire', '
 router.get('/sessions/:sessionId/lignes', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT i.*, p.denomination, p.conditionnement, pl.dotation, pl.seuil_commande,
+      SELECT i.*, p.denomination, p.conditionnement, p.conditionnement_type, p.conditionnement_quantite, p.conditionnement_quantite_non_precisee, pl.dotation, pl.seuil_commande,
              c.name as categorie
       FROM inventaires i
       JOIN produits p ON i.produit_id = p.id
@@ -98,7 +98,7 @@ router.get('/commande', requireRole('gestionnaire', 'admin'), async (req, res) =
           p.id as produit_id,
           p.denomination,
           p.taille,
-          p.conditionnement,
+          p.conditionnement, p.conditionnement_type, p.conditionnement_quantite, p.conditionnement_quantite_non_precisee,
           p.ref_fournisseur,
           p.fournisseur_id,
           f.name as fournisseur,
@@ -127,7 +127,7 @@ router.get('/commande', requireRole('gestionnaire', 'admin'), async (req, res) =
           p.id as produit_id,
           p.denomination,
           p.taille,
-          p.conditionnement,
+          p.conditionnement, p.conditionnement_type, p.conditionnement_quantite, p.conditionnement_quantite_non_precisee,
           p.ref_fournisseur,
           p.fournisseur_id,
           f.name as fournisseur,

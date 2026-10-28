@@ -3,6 +3,7 @@ import WheelDatePicker from '../components/WheelDatePicker';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../api';
 import toast from 'react-hot-toast';
+import { formatConditionnement, erreurConditionnement, uniteComptage, ConditionnementInput } from '../conditionnement';
 import { Plus, CheckCircle, ClipboardList, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, X, LayoutGrid, List, Edit2, Home } from 'lucide-react';
 
 export default function InventairePage() {
@@ -303,7 +304,7 @@ export default function InventairePage() {
                                 <p className="text-sm font-medium text-gray-900">{p.denomination}</p>
                                 {p.taille && <p className="text-xs text-gray-400">{p.taille}</p>}
                                 <button onClick={() => setEditCondProduit(p)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600">
-                                  {p.conditionnement || 'Aucun conditionnement'} <Edit2 size={11} />
+                                  {formatConditionnement(p)} <Edit2 size={11} />
                                 </button>
                               </div>
                               <InventaireInput
@@ -338,7 +339,7 @@ export default function InventairePage() {
         <EditConditionnementModal
           produit={editCondProduit}
           onClose={() => setEditCondProduit(null)}
-          onSaved={(newVal) => { editCondProduit.conditionnement = newVal; setProduits(prev => prev.map(p => p.id === editCondProduit.id ? { ...p, conditionnement: newVal } : p)); }}
+          onSaved={(champs) => { Object.assign(editCondProduit, champs); setProduits(prev => prev.map(p => p.id === editCondProduit.id ? { ...p, ...champs } : p)); }}
         />
       )}
     </div>
@@ -358,37 +359,47 @@ async function majFormatPeremption(produit, nouvelleDate) {
 }
 
 function EditConditionnementModal({ produit, onClose, onSaved }) {
-  const [value, setValue] = useState(produit.conditionnement || '');
+  const [form, setForm] = useState({
+    conditionnement: produit.conditionnement,
+    conditionnement_type: produit.conditionnement_type || 'unite',
+    conditionnement_quantite: produit.conditionnement_quantite ?? '',
+    conditionnement_quantite_non_precisee: !!produit.conditionnement_quantite_non_precisee,
+  });
   const [loading, setLoading] = useState(false);
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const save = async () => {
+    const err = erreurConditionnement(form);
+    if (err) return toast.error(err);
     setLoading(true);
     try {
       const fd = new FormData();
-      fd.append('conditionnement', value);
+      fd.append('conditionnement', form.conditionnement ?? '');
+      fd.append('conditionnement_type', form.conditionnement_type);
+      fd.append('conditionnement_quantite', form.conditionnement_quantite);
+      fd.append('conditionnement_quantite_non_precisee', form.conditionnement_quantite_non_precisee);
       await api.patch(`/produits/${produit.id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       toast.success('Conditionnement mis à jour');
-      onSaved(value);
+      onSaved({
+        ...form,
+        conditionnement: form.conditionnement || null,
+        conditionnement_quantite: form.conditionnement_quantite_non_precisee || form.conditionnement_type === 'unite' ? null : Number(form.conditionnement_quantite),
+      });
       onClose();
-    } catch { toast.error('Erreur lors de la mise à jour'); }
+    } catch (err) { toast.error(err.response?.data?.error || 'Erreur lors de la mise à jour'); }
     finally { setLoading(false); }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50">
       <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-bold text-gray-900">Corriger le conditionnement</h2>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
         </div>
         <p className="text-sm text-gray-500 mb-3">{produit.denomination}</p>
-        <input
-          autoFocus
-          className="input mb-4"
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && save()}
-        />
+        <div className="mb-2"><ConditionnementInput form={form} set={set} /></div>
+        <p className="text-xs text-gray-400 mb-4">Le stock se compte en {uniteComptage(form)}.</p>
         <div className="flex gap-2">
           <button onClick={save} disabled={loading} className="btn-primary">{loading ? 'Enregistrement...' : 'Enregistrer'}</button>
           <button onClick={onClose} className="btn-secondary">Annuler</button>
@@ -407,19 +418,7 @@ function InventaireCarteUnique({ produits, lignes, disabled, onSave, onClose, tr
   const [qte, setQte] = useState(initial?.quantite ?? '');
   const [date, setDate] = useState(initial?.date_peremption ?? '');
   const [editCond, setEditCond] = useState(false);
-  const [condValue, setCondValue] = useState('');
   const touchStartX = useRef(0);
-
-  const saveConditionnement = async () => {
-    try {
-      const fd = new FormData();
-      fd.append('conditionnement', condValue);
-      await api.patch(`/produits/${produit.id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      produit.conditionnement = condValue;
-      setEditCond(false);
-      toast.success('Conditionnement mis à jour');
-    } catch { toast.error('Erreur lors de la mise à jour'); }
-  };
 
   useEffect(() => {
     const l = lignes[produit?.id];
@@ -481,29 +480,18 @@ function InventaireCarteUnique({ produits, lignes, disabled, onSave, onClose, tr
         <div className="text-center mb-8">
           <p className="text-xl font-bold text-gray-900">{produit.denomination}</p>
           {produit.taille && <p className="text-sm text-gray-400 mt-1">{produit.taille}</p>}
-          {editCond ? (
-            <div className="flex items-center justify-center gap-2 mt-2">
-              <input
-                autoFocus
-                className="input text-sm text-center w-40"
-                value={condValue}
-                onChange={e => setCondValue(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && saveConditionnement()}
-              />
-              <button onClick={saveConditionnement} className="btn-primary py-1.5 px-2 text-xs">OK</button>
-              <button onClick={() => setEditCond(false)} className="btn-secondary py-1.5 px-2 text-xs">Annuler</button>
-            </div>
-          ) : (
-            <button onClick={() => { setCondValue(produit.conditionnement || ''); setEditCond(true); }}
-              className="flex items-center gap-1.5 mx-auto mt-1 text-sm text-gray-400 hover:text-gray-600">
-              {produit.conditionnement || 'Aucun conditionnement'} <Edit2 size={13} />
-            </button>
+          <button onClick={() => setEditCond(true)}
+            className="flex items-center gap-1.5 mx-auto mt-1 text-sm text-gray-400 hover:text-gray-600">
+            {formatConditionnement(produit)} <Edit2 size={13} />
+          </button>
+          {editCond && (
+            <EditConditionnementModal produit={produit} onClose={() => setEditCond(false)} onSaved={champs => Object.assign(produit, champs)} />
           )}
         </div>
 
         <div className="space-y-4 max-w-sm mx-auto w-full">
           <div>
-            <label className="label">Qté en stock</label>
+            <label className="label">Qté en stock <span className="font-normal text-gray-400">(en {uniteComptage(produit)})</span></label>
             <div className="flex items-center gap-2">
               <button type="button" disabled={disabled} onClick={() => { setQte('0'); setDate(''); }}
                 className="btn-secondary px-4 py-4 text-lg font-bold shrink-0">0</button>
@@ -609,7 +597,7 @@ function InventaireInput({ produit, initial, disabled, onSave }) {
   return (
     <>
       <div>
-        <label className="label">Qté en stock</label>
+        <label className="label">Qté en stock <span className="font-normal text-gray-400">(en {uniteComptage(produit)})</span></label>
         <div className="flex items-center gap-2">
           <button type="button" disabled={disabled} onClick={() => { setQte('0'); setDate(''); setDirty(true); onSave('0', ''); }}
             className="btn-secondary px-3 font-bold shrink-0">0</button>

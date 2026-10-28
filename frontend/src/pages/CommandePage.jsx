@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../api';
 import toast from 'react-hot-toast';
+import { formatConditionnement, uniteComptage } from '../conditionnement';
 import { ShoppingCart, Printer, AlertTriangle, ChevronLeft, ChevronDown, ChevronUp, Plus, X } from 'lucide-react';
 
 
@@ -74,7 +75,7 @@ function CommandeLibreModal({ onClose, onSaved }) {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{p.denomination}{p.taille && <span className="ml-2 badge-gray">{p.taille}</span>}</p>
                       <p className="text-xs text-gray-400">
-                        {[p.fournisseur, p.conditionnement, p.dotation ? `Dotation : ${p.dotation}` : null].filter(Boolean).join(' · ')}
+                        {[p.fournisseur, formatConditionnement(p), p.dotation ? `Dotation : ${p.dotation}` : null, `Qté en ${uniteComptage(p)}`].filter(Boolean).join(' · ')}
                       </p>
                     </div>
                     <input
@@ -195,7 +196,7 @@ function HistoriqueCommandes({ historique }) {
                 {expanded[c.id].lignes.map(l => (
                   <tr key={l.id} className="border-b border-gray-50">
                     <td className="px-4 py-2 text-gray-900">{l.denomination}{l.taille && <span className="ml-2 badge-gray">{l.taille}</span>}</td>
-                    <td className="px-4 py-2 text-center">{l.quantite_commandee}</td>
+                    <td className="px-4 py-2 text-center">{l.quantite_commandee} <span className="text-xs text-gray-400">{uniteComptage(l)}</span></td>
                     {expanded[c.id].lignes.some(l => l.quantite_recue !== null) && <td className="px-4 py-2 text-center">{l.quantite_recue ?? '—'}</td>}
                   </tr>
                 ))}
@@ -451,7 +452,7 @@ export default function CommandePage() {
                       </td>
                       <td className="px-4 py-3 text-gray-500 font-mono text-xs hidden sm:table-cell">{l.ref_fournisseur || '—'}</td>
                       <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{l.fournisseur || '—'}</td>
-                      <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{l.conditionnement || '—'}</td>
+                      <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{formatConditionnement(l)}</td>
                       <td className="px-4 py-3 text-center">
                         <span className={`badge ${l.stock_actuel === null ? 'badge-gray' : l.stock_actuel === 0 ? 'badge-red' : 'badge-yellow'}`}>
                           {l.stock_actuel ?? 'N/S'}
@@ -466,6 +467,7 @@ export default function CommandePage() {
                           disabled={!!commande}
                           onChange={e => setQuantitesModifiees(p => ({ ...p, [l.produit_id]: e.target.value === '' ? '' : Number(e.target.value) }))}
                         />
+                        <p className="text-xs text-blue-500 mt-0.5">{uniteComptage(l)}</p>
                       </td>
                     </tr>
                   ))}

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import { formatConditionnement, erreurConditionnement, ConditionnementInput } from '../conditionnement';
 import { Search, X, Edit2, Save, Upload, MapPin, Package, Plus, Trash2, ArrowLeft } from 'lucide-react';
 
 const ETAGERES = ['A', 'B', 'C'];
@@ -118,6 +119,8 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const save = async () => {
+    const errCond = erreurConditionnement(form);
+    if (errCond) return toast.error(errCond);
     setLoading(true);
     try {
       const fd = new FormData();
@@ -205,11 +208,19 @@ function FicheProduit({ produit, categories, fournisseurs, etageres, niveaux, em
           </div>
 
           <Field label="Dénomination" field="denomination" editing={editing} form={form} set={set} />
+          <Field label="Appellation interne" field="appellation_interne" editing={editing} form={form} set={set} />
           <Field label="Taille / Référence" field="taille" editing={editing} form={form} set={set} />
           <Field label="Catégorie" field="categorie_id" options={categories} editing={editing} form={form} set={set} />
           <Field label="Fournisseur" field="fournisseur_id" options={fournisseurs} editing={editing} form={form} set={set} />
           <Field label="Réf. fournisseur" field="ref_fournisseur" editing={editing} form={form} set={set} />
-          <Field label="Conditionnement" field="conditionnement" editing={editing} form={form} set={set} />
+          <div className="sm:col-span-2">
+            <label className="label">Conditionnement</label>
+            {editing ? (
+              <ConditionnementInput form={form} set={set} />
+            ) : (
+              <span className="text-sm text-gray-900">{formatConditionnement(form)}</span>
+            )}
+          </div>
           <Field label="Prix (€)" field="prix" type="number" editing={editing} form={form} set={set} />
           <Field label="Consommation mensuelle" field="consommation_mensuelle" type="number" editing={editing} form={form} set={set} />
           <div>
@@ -397,8 +408,9 @@ export default function ProduitsPage() {
                         <td className="px-4 py-2.5">
                           <span className="font-medium text-gray-900">{p.denomination}</span>
                           {p.taille && <span className="ml-2 badge-gray">{p.taille}</span>}
+                          {p.appellation_interne && <p className="text-xs text-gray-400">{p.appellation_interne}</p>}
                         </td>
-                        <td className="px-4 py-2.5 text-gray-500 hidden sm:table-cell">{p.conditionnement || '—'}</td>
+                        <td className="px-4 py-2.5 text-gray-500 hidden sm:table-cell">{formatConditionnement(p)}</td>
                         <td className="px-4 py-2.5 text-gray-500 hidden md:table-cell">{p.fournisseur || '—'}</td>
                       </tr>
                     ))}
@@ -447,12 +459,14 @@ export default function ProduitsPage() {
 }
 
 function AddProduitModal({ categories, fournisseurs, onClose, onSaved }) {
-  const [form, setForm] = useState({ denomination: '', taille: '', categorie_id: '', fournisseur_id: '', conditionnement: '', prix: '', sans_peremption: false });
+  const [form, setForm] = useState({ denomination: '', appellation_interne: '', taille: '', categorie_id: '', fournisseur_id: '', conditionnement_type: 'unite', conditionnement_quantite: '', conditionnement_quantite_non_precisee: false, prix: '', sans_peremption: false });
   const [loading, setLoading] = useState(false);
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const save = async () => {
     if (!form.denomination) return toast.error('Dénomination requise');
+    const errCond = erreurConditionnement(form);
+    if (errCond) return toast.error(errCond);
     setLoading(true);
     try {
       await api.post('/produits', form);
@@ -471,6 +485,7 @@ function AddProduitModal({ categories, fournisseurs, onClose, onSaved }) {
         </div>
         <div className="grid sm:grid-cols-2 gap-4">
           <div className="sm:col-span-2"><label className="label">Dénomination *</label><input className="input" value={form.denomination} onChange={e => set('denomination', e.target.value)} /></div>
+          <div className="sm:col-span-2"><label className="label">Appellation interne</label><input className="input" value={form.appellation_interne} onChange={e => set('appellation_interne', e.target.value)} placeholder="Nom utilisé dans l'app Résidents, si différent" /></div>
           <div><label className="label">Taille</label><input className="input" value={form.taille} onChange={e => set('taille', e.target.value)} /></div>
           <div><label className="label">Catégorie</label>
             <select className="input" value={form.categorie_id} onChange={e => set('categorie_id', e.target.value)}>
@@ -484,7 +499,7 @@ function AddProduitModal({ categories, fournisseurs, onClose, onSaved }) {
               {fournisseurs.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
           </div>
-          <div><label className="label">Conditionnement</label><input className="input" value={form.conditionnement} onChange={e => set('conditionnement', e.target.value)} /></div>
+          <div className="sm:col-span-2"><label className="label">Conditionnement</label><ConditionnementInput form={form} set={set} /></div>
           <div className="col-span-2">
             <label className="flex items-center gap-2 py-2 text-sm text-gray-700 cursor-pointer">
               <input type="checkbox" checked={!!form.sans_peremption} onChange={e => set('sans_peremption', e.target.checked)} className="w-4 h-4 accent-primary-600" />

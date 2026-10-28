@@ -57,7 +57,11 @@ export async function initDb() {
       updated_at TIMESTAMP DEFAULT NOW(),
       archived BOOLEAN DEFAULT false,
       sans_peremption BOOLEAN DEFAULT false,
-      peremption_sans_jour BOOLEAN DEFAULT false
+      peremption_sans_jour BOOLEAN DEFAULT false,
+      conditionnement_type VARCHAR(10) DEFAULT 'unite',
+      conditionnement_quantite INTEGER,
+      conditionnement_quantite_non_precisee BOOLEAN DEFAULT false,
+      appellation_interne TEXT
     );
 
     -- Dotation, seuil et emplacement sont propres a chaque lieu de stockage
@@ -143,6 +147,26 @@ export async function initDb() {
       quantite REAL NOT NULL,
       date_reception TIMESTAMP DEFAULT NOW()
     );
+  `);
+
+  // Colonnes ajoutees apres coup : migre automatiquement les bases existantes
+  await pool.query(`ALTER TABLE produits ADD COLUMN IF NOT EXISTS conditionnement_type VARCHAR(10) DEFAULT 'unite'`);
+  await pool.query(`ALTER TABLE produits ADD COLUMN IF NOT EXISTS conditionnement_quantite INTEGER`);
+  await pool.query(`ALTER TABLE produits ADD COLUMN IF NOT EXISTS conditionnement_quantite_non_precisee BOOLEAN DEFAULT false`);
+  await pool.query(`ALTER TABLE produits ADD COLUMN IF NOT EXISTS appellation_interne TEXT`);
+
+  // Reprise de l'ancien texte libre ("Sachet de 28", "Boite de 30 doses"...) vers le conditionnement structure.
+  // Ne touche que les produits encore en "unite" sans nombre : les textes ambigus restent a trancher a la main.
+  await pool.query(`
+    UPDATE produits SET
+      conditionnement_type = CASE
+        WHEN conditionnement ~* '^\\s*sachets?\\s' THEN 'sachet'
+        WHEN conditionnement ~* '^\\s*cartons?\\s' THEN 'carton'
+        ELSE 'boite' END,
+      conditionnement_quantite = (substring(conditionnement from '(?i)^\\s*\\S+\\s+de\\s+(\\d+)'))::int,
+      conditionnement_quantite_non_precisee = false
+    WHERE conditionnement_type = 'unite' AND conditionnement_quantite IS NULL
+      AND conditionnement ~* '^\\s*(sachet|bo[iî]te|carton)\\s+de\\s+[1-9][0-9]*(\\s+[[:alpha:]]+)?\\s*$'
   `);
 
   // Seed categories
